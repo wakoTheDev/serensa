@@ -3,6 +3,7 @@ from decimal import Decimal
 from io import BytesIO
 
 from django.contrib import messages
+from django.contrib.auth.views import LoginView
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
 from django.db.models import Sum
@@ -13,17 +14,76 @@ from openpyxl import Workbook
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-from .forms import DailyEntryForm, ReportFilterForm, ShopForm, UserManagementForm, UserRoleUpdateForm
-from .models import BankBalanceSnapshot, DailyEntry, Shop
+from .forms import (
+    AdminBootstrapForm,
+    DailyEntryForm,
+    PhoneLoginForm,
+    ReportFilterForm,
+    ShopForm,
+    UserManagementForm,
+    UserRoleUpdateForm,
+)
+from .models import BankBalanceSnapshot, DailyEntry, Shop, UserProfile
 from .services import fetch_jenga_equity_balance
 
 
+class UserLoginView(LoginView):
+    template_name = "registration/login.html"
+    authentication_form = PhoneLoginForm
+
+    def form_invalid(self, form):
+        messages.error(self.request, "Invalid phone/username or password.")
+        return super().form_invalid(form)
+
+    def get_success_url(self):
+        return self.get_redirect_url() or "/"
+
+
+def _resolve_profile(user):
+    if not user.is_authenticated:
+        return None
+
+    default_role = UserProfile.ADMIN if (user.is_superuser or user.is_staff) else UserProfile.VENDOR
+    profile, created = UserProfile.objects.get_or_create(user=user, defaults={"role": default_role})
+
+    # Keep privileged Django accounts aligned with admin role.
+    if (user.is_superuser or user.is_staff) and profile.role != UserProfile.ADMIN:
+        profile.role = UserProfile.ADMIN
+        profile.save(update_fields=["role"])
+
+    # Existing profiles without role should still behave safely.
+    if created and not profile.role:
+        profile.role = default_role
+        profile.save(update_fields=["role"])
+
+    return profile
+
+
 def _is_admin(user):
-    return user.is_authenticated and hasattr(user, "profile") and user.profile.is_admin
+    profile = _resolve_profile(user)
+    return bool(profile and profile.is_admin)
 
 
 def _is_vendor(user):
-    return user.is_authenticated and hasattr(user, "profile") and not user.profile.is_admin
+    profile = _resolve_profile(user)
+    return bool(profile and not profile.is_admin)
+
+
+def bootstrap_admin(request):
+    if UserProfile.objects.filter(role=UserProfile.ADMIN, user__is_active=True).exists():
+        messages.info(request, "Admin account already exists. Please login.")
+        return redirect("login")
+
+    if request.method == "POST":
+        form = AdminBootstrapForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Admin account created. Login using phone number and password.")
+            return redirect("login")
+    else:
+        form = AdminBootstrapForm()
+
+    return render(request, "sensa/setup_admin.html", {"form": form})
 
 
 @login_required

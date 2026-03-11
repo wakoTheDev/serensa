@@ -3,6 +3,7 @@
 {% block content %}
 <section class="panel">
     <h2>{{ title }}</h2>
+    <p class="muted">For Admin role: provide phone number and numeric-only password. Vendors can use username and standard password.</p>
     <form method="post" class="form-grid">
         {% csrf_token %}
         {{ form.as_p }}

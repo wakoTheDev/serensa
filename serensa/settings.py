@@ -81,4 +81,13 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"
 
+AUTHENTICATION_BACKENDS = [
+    "sensa.auth_backends.PhoneOrUsernameBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+
+# Auto-logout after 2 hours of inactivity.
+SESSION_COOKIE_AGE = 2 * 60 * 60
+SESSION_SAVE_EVERY_REQUEST = True
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

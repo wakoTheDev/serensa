@@ -3,11 +3,12 @@
 {% block content %}
 <section class="panel auth-panel">
     <h2>Sign in to Sensa</h2>
-    <p>Use your admin or vendor account.</p>
+    <p>Admin can login with phone number. Vendors can login with username.</p>
     <form method="post" class="form-grid">
         {% csrf_token %}
         {{ form.as_p }}
         <button type="submit" class="btn">Login</button>
     </form>
+    <p class="muted">First time setup? <a href="{% url 'setup_admin' %}">Create Admin Account</a></p>
 </section>
 {% endblock %}

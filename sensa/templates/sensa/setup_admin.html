@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel auth-panel">
+    <h2>Initial Admin Setup</h2>
+    <p>Create the first admin account using phone number and numeric password.</p>
+    <form method="post" class="form-grid">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn">Create Admin</button>
+    </form>
+    <p class="muted"><a href="{% url 'login' %}">Back to login</a></p>
+</section>
+{% endblock %}

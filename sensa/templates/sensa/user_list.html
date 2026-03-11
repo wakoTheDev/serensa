@@ -8,11 +8,12 @@
     </div>
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Assigned Shops</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Username</th><th>Phone</th><th>Role</th><th>Status</th><th>Assigned Shops</th><th>Actions</th></tr></thead>
             <tbody>
                 {% for user_obj in users %}
                 <tr>
                     <td>{{ user_obj.username }}</td>
+                    <td>{{ user_obj.profile.phone_number|default:'-' }}</td>
                     <td>{{ user_obj.profile.role }}</td>
                     <td>{{ user_obj.is_active|yesno:'Active,Inactive' }}</td>
                     <td>

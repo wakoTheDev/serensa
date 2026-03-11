@@ -113,6 +113,7 @@ If live endpoint/token are missing, the app uses mock response mode.
 
 ## Key Routes
 
+- `/setup-admin/` first-time admin account setup (phone + numeric password)
 - `/accounts/login/` login
 - `/admin-dashboard/` admin home
 - `/vendor-dashboard/` vendor home
@@ -127,6 +128,8 @@ If live endpoint/token are missing, the app uses mock response mode.
 
 - The project uses Django built-in auth with an attached `UserProfile` model for role and shop assignments.
 - Vendor removal is implemented as deactivation (`is_active=False`) to preserve historical records.
+- Admin authentication supports phone number login.
+- Session timeout is configured to auto-logout admin/vendor users after 2 hours of inactivity.
 
 ## CI/CD To Vercel (Auto Deploy On Main)
 
