@@ -153,6 +153,7 @@ class UserRoleUpdateForm(forms.Form):
 
 
 class AdminBootstrapForm(forms.Form):
+    username = forms.CharField(max_length=150)
     phone_number = forms.CharField(
         max_length=20,
         validators=[RegexValidator(r"^\d{9,15}$", "Enter a valid phone number (9-15 digits).")],
@@ -173,9 +174,13 @@ class AdminBootstrapForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
+        username = (cleaned_data.get("username") or "").strip()
         password = cleaned_data.get("password")
         confirm = cleaned_data.get("confirm_password")
         phone_number = cleaned_data.get("phone_number")
+
+        if username and User.objects.filter(username=username).exists():
+            self.add_error("username", "This username is already in use.")
 
         if password and confirm and password != confirm:
             self.add_error("confirm_password", "Passwords do not match.")
@@ -186,11 +191,12 @@ class AdminBootstrapForm(forms.Form):
         return cleaned_data
 
     def save(self):
+        username = self.cleaned_data["username"].strip()
         phone_number = self.cleaned_data["phone_number"]
         password = self.cleaned_data["password"]
 
         user = User.objects.create_user(
-            username=phone_number,
+            username=username,
             password=password,
             is_staff=True,
             is_active=True,

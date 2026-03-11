@@ -3,7 +3,7 @@
 {% block content %}
 <section class="panel auth-panel">
     <h2>Initial Admin Setup</h2>
-    <p>Create the first admin account using phone number and numeric password.</p>
+    <p>Create the first admin account with username, phone number, and numeric password.</p>
     <form method="post" class="form-grid">
         {% csrf_token %}
         {{ form.as_p }}

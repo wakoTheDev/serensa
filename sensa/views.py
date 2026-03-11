@@ -78,7 +78,10 @@ def bootstrap_admin(request):
         form = AdminBootstrapForm(request.POST)
         if form.is_valid():
             form.save()
-            messages.success(request, "Admin account created. Login using phone number and password.")
+            messages.success(
+                request,
+                "Admin account created. Login using username or phone number and password.",
+            )
             return redirect("login")
     else:
         form = AdminBootstrapForm()
