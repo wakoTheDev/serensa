@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-head">
+        <h2>Shops</h2>
+        <a class="btn" href="{% url 'shop_create' %}">Add Shop</a>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Name</th><th>Location</th><th>Active</th><th>Actions</th></tr></thead>
+            <tbody>
+                {% for shop in shops %}
+                <tr>
+                    <td>{{ shop.name }}</td>
+                    <td>{{ shop.location }}</td>
+                    <td>{{ shop.active }}</td>
+                    <td>
+                        <a href="{% url 'shop_edit' shop.pk %}">Edit</a>
+                        <a href="{% url 'shop_delete' shop.pk %}">Delete</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4">No shops available.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

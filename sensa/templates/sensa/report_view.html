@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-head">
+        <h2>Reports</h2>
+        <div class="chip-row">
+            <a class="btn" href="{% url 'fetch_balance' %}">Fetch Equity Balance (Jenga)</a>
+            <a class="btn" href="{% url 'export_report_excel' %}?{{ request.GET.urlencode }}">Export Excel</a>
+            <a class="btn" href="{% url 'export_report_pdf' %}?{{ request.GET.urlencode }}">Export PDF</a>
+        </div>
+    </div>
+    <form method="get" class="form-inline">
+        {{ form.as_p }}
+        <button class="btn" type="submit">Apply Filter</button>
+    </form>
+    <p>Period: {{ start }} to {{ end }}</p>
+    {% if balance %}
+    <p class="muted">Latest Equity Balance: {{ balance.balance }} ({{ balance.fetched_at }})</p>
+    {% endif %}
+</section>
+
+<section class="grid two">
+    <article class="panel">
+        <h3>Summary</h3>
+        <ul class="compact-list">
+            <li>Total Sales Value: {{ total_sales }}</li>
+            <li>Stock Consumed: {{ stock_consumed }}</li>
+            <li>Total Expenses: {{ totals.expenses|default:0 }}</li>
+            <li><strong>Profit/Loss: {{ profit_or_loss }}</strong></li>
+        </ul>
+    </article>
+    <article class="panel chart-panel">
+        <h3>Visual Report</h3>
+        <canvas id="reportChart"></canvas>
+    </article>
+</section>
+
+<section class="panel">
+    <h3>Ledger</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th><th>Shop</th><th>Open</th><th>Added</th><th>Expenses</th><th>Debts</th><th>Closing</th><th>Cash</th><th>P/L</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr>
+                    <td>{{ entry.entry_date }}</td>
+                    <td>{{ entry.shop.name }}</td>
+                    <td>{{ entry.opening_stock }}</td>
+                    <td>{{ entry.stock_added }}</td>
+                    <td>{{ entry.expenses }}</td>
+                    <td>{{ entry.debts }}</td>
+                    <td>{{ entry.closing_stock }}</td>
+                    <td>{{ entry.cash_received }}</td>
+                    <td>{{ entry.profit_or_loss }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9">No records in selected period.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{{ chart_payload|json_script:"chart-data" }}
+<script src="/static/js/charts.js"></script>
+{% endblock %}

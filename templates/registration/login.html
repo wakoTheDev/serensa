@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel auth-panel">
+    <h2>Sign in to Sensa</h2>
+    <p>Use your admin or vendor account.</p>
+    <form method="post" class="form-grid">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn">Login</button>
+    </form>
+</section>
+{% endblock %}

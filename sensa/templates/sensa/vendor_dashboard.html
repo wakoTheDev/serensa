@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <h2>Your Assigned Shops</h2>
+    <div class="chip-row">
+        {% for shop in assigned_shops %}
+            <span class="chip">{{ shop.name }}</span>
+        {% empty %}
+            <span>No assigned shops yet.</span>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="grid two">
+    <article class="panel">
+        <h3>Today's Records</h3>
+        <ul class="compact-list">
+            {% for entry in todays_entries %}
+            <li>{{ entry.shop.name }} | Cash {{ entry.cash_received }} | P/L {{ entry.profit_or_loss }}</li>
+            {% empty %}
+            <li>No records submitted today.</li>
+            {% endfor %}
+        </ul>
+    </article>
+
+    <article class="panel">
+        <h3>Latest Record</h3>
+        {% if latest_entry %}
+            <p>{{ latest_entry.entry_date }} - {{ latest_entry.shop.name }}</p>
+            <p>Opening: {{ latest_entry.opening_stock }}</p>
+            <p>Added: {{ latest_entry.stock_added }}</p>
+            <p>Closing: {{ latest_entry.closing_stock }}</p>
+            <p>Cash: {{ latest_entry.cash_received }}</p>
+        {% else %}
+            <p>No record yet.</p>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

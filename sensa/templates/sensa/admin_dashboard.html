@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="grid two">
+    <article class="panel stat">
+        <h3>Active Shops</h3>
+        <p class="big">{{ shops_count }}</p>
+    </article>
+    <article class="panel stat">
+        <h3>Entries Today</h3>
+        <p class="big">{{ entries_today }}</p>
+    </article>
+</section>
+
+<section class="panel">
+    <h2>Recent Records</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th><th>Shop</th><th>Cash</th><th>Debts</th><th>Expenses</th><th>P/L</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in recent_entries %}
+                <tr>
+                    <td>{{ entry.entry_date }}</td>
+                    <td>{{ entry.shop.name }}</td>
+                    <td>{{ entry.cash_received }}</td>
+                    <td>{{ entry.debts }}</td>
+                    <td>{{ entry.expenses }}</td>
+                    <td>{{ entry.profit_or_loss }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6">No entries yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

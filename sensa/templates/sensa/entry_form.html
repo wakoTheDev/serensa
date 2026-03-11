@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel">
+    <h2>Feed Shop Values</h2>
+    <p>Vendors can update only same-day records for assigned shops.</p>
+    <form method="post" class="form-grid">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="btn" type="submit">Save Entry</button>
+    </form>
+</section>
+{% endblock %}
