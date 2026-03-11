@@ -1,6 +1,15 @@
 from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
 from .models import BankBalanceSnapshot, DailyEntry, Shop, UserProfile
+
+User = get_user_model()
+
+
+@admin.register(User)
+class UserAdmin(DjangoUserAdmin):
+    pass
 
 
 @admin.register(Shop)
@@ -12,9 +21,9 @@ class ShopAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "role")
+    list_display = ("user", "role", "phone_number")
     list_filter = ("role",)
-    search_fields = ("user__username", "user__email")
+    search_fields = ("user__username", "user__email", "phone_number")
 
 
 @admin.register(DailyEntry)

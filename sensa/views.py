@@ -3,9 +3,9 @@ from decimal import Decimal
 from io import BytesIO
 
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.views import LoginView
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.contrib.auth.models import User
 from django.db.models import Sum
 from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -25,6 +25,8 @@ from .forms import (
 )
 from .models import BankBalanceSnapshot, DailyEntry, Shop, UserProfile
 from .services import fetch_jenga_equity_balance
+
+User = get_user_model()
 
 
 class UserLoginView(LoginView):

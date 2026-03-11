@@ -1,10 +1,12 @@
 from django import forms
+from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm
-from django.contrib.auth.models import User
 from django.core.validators import RegexValidator
 from django.utils import timezone
 
 from .models import DailyEntry, Shop, UserProfile
+
+User = get_user_model()
 
 
 class ShopForm(forms.ModelForm):

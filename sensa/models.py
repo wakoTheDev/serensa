@@ -1,9 +1,14 @@
 from decimal import Decimal
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import AbstractUser
+from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
+
+
+class User(AbstractUser):
+    pass
 
 
 class Shop(models.Model):
@@ -21,7 +26,11 @@ class UserProfile(models.Model):
     VENDOR = "vendor"
     ROLE_CHOICES = [(ADMIN, "Admin"), (VENDOR, "Vendor")]
 
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="profile",
+    )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=VENDOR)
     phone_number = models.CharField(max_length=20, blank=True, db_index=True)
     assigned_shops = models.ManyToManyField(Shop, blank=True, related_name="vendors")
@@ -70,7 +79,12 @@ class DailyEntry(models.Model):
         help_text="Cash received from buyers.",
     )
     notes = models.TextField(blank=True)
-    submitted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

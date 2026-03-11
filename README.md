@@ -91,6 +91,9 @@ python -m pip install -r requirements.txt
 python manage.py migrate
 ```
 
+For a fresh production MongoDB database, this migration step is required before using `/setup-admin/`.
+The app now uses a custom Django user model so auth and profile relations stay compatible with MongoDB `ObjectId` primary keys.
+
 4. Create admin account and run:
 
 ```bash
@@ -179,7 +182,7 @@ If live endpoint/token are missing, the app uses mock response mode.
 
 ## Notes
 
-- The project uses Django built-in auth with an attached `UserProfile` model for role and shop assignments.
+- The project uses a custom Django auth user model with an attached `UserProfile` model for role and shop assignments.
 - Vendor removal is implemented as deactivation (`is_active=False`) to preserve historical records.
 - Admin authentication supports phone number login.
 - Session timeout is configured to auto-logout admin/vendor users after 2 hours of inactivity.
@@ -191,6 +194,7 @@ This repository now includes GitHub Actions CI/CD for Vercel:
 - Workflow file: `.github/workflows/vercel-deploy.yml`
 - Trigger: push to `main` branch (and manual `workflow_dispatch`)
 - Deployment target: Vercel Production
+- The workflow now pulls Vercel production environment variables, runs `python manage.py migrate --noinput`, then deploys.
 
 ### Required GitHub Repository Secrets
 
@@ -215,6 +219,17 @@ If using MongoDB in production, also set:
 - `MONGODB_NAME=serensa`
 - `MONGODB_URI=<your-atlas-connection-string>`
 
+Then run the migrations once against that same Atlas database before opening the live site:
+
+```bash
+export DB_ENGINE=django_mongodb_backend
+export MONGODB_NAME=serensa
+export MONGODB_URI='<your-atlas-connection-string>'
+python manage.py migrate
+```
+
+If the database is still empty, no data migration is needed.
+
 And any app-level variables you use (for example Jenga credentials).
 
 ### Vercel Runtime Files Added
@@ -223,4 +238,4 @@ And any app-level variables you use (for example Jenga credentials).
 - `api/index.py` as WSGI serverless entrypoint
 - `.vercelignore` to keep deployment package clean
 
-After these secrets are configured, any commit pushed to `main` automatically deploys to Vercel.
+After these secrets are configured, any commit pushed to `main` automatically runs migrations against the production database and then deploys to Vercel.
