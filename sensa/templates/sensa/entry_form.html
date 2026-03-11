@@ -2,12 +2,37 @@
 
 {% block content %}
 <section class="panel">
-    <h2>Feed Shop Values</h2>
-    <p>Vendors can update only same-day records for assigned shops.</p>
+        <h2>{{ form_title }}</h2>
+        <p>{{ form_subtitle }}</p>
+        <p>
+                <strong>Mode:</strong>
+                {% if is_edit_mode %}
+                        Editing Existing Record
+                {% else %}
+                        New Entry
+                {% endif %}
+        </p>
     <form method="post" class="form-grid">
         {% csrf_token %}
         {{ form.as_p }}
-        <button class="btn" type="submit">Save Entry</button>
+                <button class="btn" type="submit">{{ submit_label }}</button>
     </form>
 </section>
+
+<script>
+(() => {
+    const shopField = document.getElementById("id_shop");
+    if (!shopField) return;
+
+    shopField.addEventListener("change", () => {
+        const params = new URLSearchParams(window.location.search);
+        if (shopField.value) {
+            params.set("shop", shopField.value);
+        } else {
+            params.delete("shop");
+        }
+        window.location.search = params.toString();
+    });
+})();
+</script>
 {% endblock %}

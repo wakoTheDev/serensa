@@ -28,7 +28,7 @@
             {% endif %}
             <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}
-                <button class="link-btn" style="background-color:red padding:2px color:black" type="submit">Logout</button>
+                <button class="link-btn logout-btn" type="submit">Logout</button>
             </form>
         </nav>
     </header>

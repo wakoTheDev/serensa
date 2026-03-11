@@ -84,6 +84,22 @@ a, .link-btn {
   font: inherit;
 }
 
+.logout-btn {
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(185, 28, 28, 0.12);
+  color: #991b1b;
+  border: 1px solid rgba(185, 28, 28, 0.35);
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.logout-btn:hover,
+.logout-btn:focus-visible {
+  background: #b91c1c;
+  color: #fff;
+  border-color: #b91c1c;
+}
+
 .container {
   max-width: 1100px;
   margin: 1rem auto 2rem;

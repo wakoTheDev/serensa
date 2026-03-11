@@ -136,9 +136,12 @@ def vendor_dashboard(request):
 def entry_create_or_update(request):
     today = timezone.localdate()
     user = request.user
+    selected_shop_id = request.GET.get("shop")
 
     if not (_is_admin(user) or _is_vendor(user)):
         return HttpResponseForbidden("Not authorized.")
+
+    edit_entry = None
 
     if request.method == "POST":
         form = DailyEntryForm(request.POST, user=user)
@@ -147,13 +150,14 @@ def entry_create_or_update(request):
             if _is_vendor(user) and not user.profile.assigned_shops.filter(pk=shop.pk).exists():
                 return HttpResponseForbidden("You can only submit data to your assigned shops.")
 
-            entry, _ = DailyEntry.objects.get_or_create(
+            entry, created = DailyEntry.objects.get_or_create(
                 shop=shop,
                 entry_date=form.cleaned_data["entry_date"],
                 defaults={
                     "opening_stock": form.cleaned_data["opening_stock"],
                     "stock_added": form.cleaned_data["stock_added"],
                     "expenses": form.cleaned_data["expenses"],
+                    "sales_value": form.cleaned_data["sales_value"],
                     "debts": form.cleaned_data["debts"],
                     "closing_stock": form.cleaned_data["closing_stock"],
                     "cash_received": form.cleaned_data["cash_received"],
@@ -166,24 +170,62 @@ def entry_create_or_update(request):
                 entry.opening_stock = form.cleaned_data["opening_stock"]
                 entry.stock_added = form.cleaned_data["stock_added"]
                 entry.expenses = form.cleaned_data["expenses"]
+                entry.sales_value = form.cleaned_data["sales_value"]
                 entry.debts = form.cleaned_data["debts"]
                 entry.closing_stock = form.cleaned_data["closing_stock"]
                 entry.cash_received = form.cleaned_data["cash_received"]
                 entry.notes = form.cleaned_data["notes"]
                 entry.submitted_by = user
                 entry.save()
-                messages.success(request, "Entry saved successfully.")
+                if created:
+                    messages.success(request, "Entry created successfully.")
+                else:
+                    messages.success(request, "Entry updated successfully.")
             else:
                 messages.error(request, "Vendors can only update entries for the same day.")
 
             if _is_admin(user):
                 return redirect("admin_dashboard")
             return redirect("vendor_dashboard")
+        shop_id = request.POST.get("shop")
+        if shop_id:
+            edit_entry = DailyEntry.objects.filter(shop_id=shop_id, entry_date=today).first()
     else:
         initial = {"entry_date": today}
-        form = DailyEntryForm(user=user, initial=initial)
 
-    return render(request, "sensa/entry_form.html", {"form": form})
+        if _is_vendor(user):
+            assigned_shops = user.profile.assigned_shops.filter(active=True).order_by("name")
+            if selected_shop_id:
+                selected_shop = assigned_shops.filter(pk=selected_shop_id).first()
+            else:
+                selected_shop = assigned_shops.first()
+            if selected_shop:
+                initial["shop"] = selected_shop
+                edit_entry = DailyEntry.objects.filter(shop=selected_shop, entry_date=today).first()
+
+        elif _is_admin(user) and selected_shop_id:
+            selected_shop = Shop.objects.filter(pk=selected_shop_id).first()
+            if selected_shop:
+                initial["shop"] = selected_shop
+                edit_entry = DailyEntry.objects.filter(shop=selected_shop, entry_date=today).first()
+
+        if edit_entry:
+            form = DailyEntryForm(user=user, instance=edit_entry)
+        else:
+            form = DailyEntryForm(user=user, initial=initial)
+
+    context = {
+        "form": form,
+        "is_edit_mode": bool(edit_entry),
+        "form_title": "Update Shop Values" if edit_entry else "Feed Shop Values",
+        "form_subtitle": (
+            "Editing today's saved entry. Update the fields and submit changes."
+            if edit_entry
+            else "Create today's entry for the selected shop."
+        ),
+        "submit_label": "Update Entry" if edit_entry else "Save Entry",
+    }
+    return render(request, "sensa/entry_form.html", context)
 
 
 @login_required
@@ -273,6 +315,7 @@ def _build_report_dataset(query_data):
         opening_stock=Sum("opening_stock"),
         stock_added=Sum("stock_added"),
         expenses=Sum("expenses"),
+        sales_value=Sum("sales_value"),
         debts=Sum("debts"),
         closing_stock=Sum("closing_stock"),
         cash_received=Sum("cash_received"),
@@ -281,12 +324,10 @@ def _build_report_dataset(query_data):
     opening = totals["opening_stock"] or Decimal("0.00")
     added = totals["stock_added"] or Decimal("0.00")
     expenses = totals["expenses"] or Decimal("0.00")
-    debts = totals["debts"] or Decimal("0.00")
     closing = totals["closing_stock"] or Decimal("0.00")
-    cash = totals["cash_received"] or Decimal("0.00")
+    total_sales = totals["sales_value"] or Decimal("0.00")
 
     stock_consumed = opening + added - closing
-    total_sales = cash + debts
     profit_or_loss = total_sales - stock_consumed - expenses
 
     trend_points = OrderedDict()
@@ -298,7 +339,7 @@ def _build_report_dataset(query_data):
                 "expenses": Decimal("0.00"),
                 "profit": Decimal("0.00"),
             }
-        trend_points[key]["sales"] += (entry.cash_received or Decimal("0.00")) + (entry.debts or Decimal("0.00"))
+        trend_points[key]["sales"] += entry.sales_value or Decimal("0.00")
         trend_points[key]["expenses"] += entry.expenses or Decimal("0.00")
         trend_points[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
 
@@ -357,6 +398,7 @@ def export_report_excel(request):
         "Opening",
         "Added",
         "Expenses",
+        "Sales",
         "Debts",
         "Closing",
         "Cash",
@@ -371,6 +413,7 @@ def export_report_excel(request):
                 float(entry.opening_stock),
                 float(entry.stock_added),
                 float(entry.expenses),
+                float(entry.sales_value),
                 float(entry.debts),
                 float(entry.closing_stock),
                 float(entry.cash_received),
@@ -424,10 +467,11 @@ def export_report_pdf(request):
     pdf.drawString(205, y, "Open")
     pdf.drawString(250, y, "Added")
     pdf.drawString(300, y, "Exp")
-    pdf.drawString(345, y, "Debt")
-    pdf.drawString(395, y, "Close")
-    pdf.drawString(445, y, "Cash")
-    pdf.drawString(495, y, "P/L")
+    pdf.drawString(340, y, "Sales")
+    pdf.drawString(390, y, "Debt")
+    pdf.drawString(435, y, "Close")
+    pdf.drawString(480, y, "Cash")
+    pdf.drawString(525, y, "P/L")
     y -= 14
 
     pdf.setFont("Helvetica", 8)
@@ -441,10 +485,11 @@ def export_report_pdf(request):
             pdf.drawString(205, y, "Open")
             pdf.drawString(250, y, "Added")
             pdf.drawString(300, y, "Exp")
-            pdf.drawString(345, y, "Debt")
-            pdf.drawString(395, y, "Close")
-            pdf.drawString(445, y, "Cash")
-            pdf.drawString(495, y, "P/L")
+            pdf.drawString(340, y, "Sales")
+            pdf.drawString(390, y, "Debt")
+            pdf.drawString(435, y, "Close")
+            pdf.drawString(480, y, "Cash")
+            pdf.drawString(525, y, "P/L")
             y -= 14
             pdf.setFont("Helvetica", 8)
 
@@ -453,10 +498,11 @@ def export_report_pdf(request):
         pdf.drawRightString(245, y, f"{entry.opening_stock}")
         pdf.drawRightString(292, y, f"{entry.stock_added}")
         pdf.drawRightString(340, y, f"{entry.expenses}")
-        pdf.drawRightString(390, y, f"{entry.debts}")
-        pdf.drawRightString(440, y, f"{entry.closing_stock}")
-        pdf.drawRightString(488, y, f"{entry.cash_received}")
-        pdf.drawRightString(545, y, f"{entry.profit_or_loss}")
+        pdf.drawRightString(388, y, f"{entry.sales_value}")
+        pdf.drawRightString(433, y, f"{entry.debts}")
+        pdf.drawRightString(478, y, f"{entry.closing_stock}")
+        pdf.drawRightString(523, y, f"{entry.cash_received}")
+        pdf.drawRightString(570, y, f"{entry.profit_or_loss}")
         y -= 12
 
     pdf.save()

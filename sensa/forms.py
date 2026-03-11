@@ -24,6 +24,7 @@ class DailyEntryForm(forms.ModelForm):
             "opening_stock",
             "stock_added",
             "expenses",
+            "sales_value",
             "debts",
             "closing_stock",
             "cash_received",
@@ -37,7 +38,12 @@ class DailyEntryForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
-        self.fields["entry_date"].initial = timezone.localdate()
+        if (
+            not self.is_bound
+            and not getattr(self.instance, "pk", None)
+            and not self.initial.get("entry_date")
+        ):
+            self.fields["entry_date"].initial = timezone.localdate()
 
         if user and hasattr(user, "profile") and not user.profile.is_admin:
             self.fields["shop"].queryset = user.profile.assigned_shops.filter(active=True)

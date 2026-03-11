@@ -34,6 +34,7 @@ class DailyEntryAdmin(admin.ModelAdmin):
         "opening_stock",
         "stock_added",
         "expenses",
+        "sales_value",
         "debts",
         "closing_stock",
         "cash_received",

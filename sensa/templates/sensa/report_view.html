@@ -60,7 +60,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>Date</th><th>Shop</th><th>Open</th><th>Added</th><th>Expenses</th><th>Debts</th><th>Closing</th><th>Cash</th><th>P/L</th>
+                    <th>Date</th><th>Shop</th><th>Open</th><th>Added</th><th>Expenses</th><th>Sales</th><th>Debts</th><th>Closing</th><th>Cash</th><th>P/L</th>
                 </tr>
             </thead>
             <tbody>
@@ -71,13 +71,14 @@
                     <td>{{ entry.opening_stock }}</td>
                     <td>{{ entry.stock_added }}</td>
                     <td>{{ entry.expenses }}</td>
+                    <td>{{ entry.sales_value }}</td>
                     <td>{{ entry.debts }}</td>
                     <td>{{ entry.closing_stock }}</td>
                     <td>{{ entry.cash_received }}</td>
                     <td>{{ entry.profit_or_loss }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="9">No records in selected period.</td></tr>
+                <tr><td colspan="10">No records in selected period.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

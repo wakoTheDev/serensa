@@ -61,6 +61,12 @@ class DailyEntry(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0.00"))],
     )
+    sales_value = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Total value sold for the day.",
+    )
     debts = models.DecimalField(
         max_digits=14,
         decimal_places=2,
@@ -106,7 +112,7 @@ class DailyEntry(models.Model):
 
     @property
     def total_sales_value(self):
-        return (self.cash_received or Decimal("0.00")) + (self.debts or Decimal("0.00"))
+        return self.sales_value or Decimal("0.00")
 
     @property
     def profit_or_loss(self):
