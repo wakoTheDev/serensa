@@ -52,12 +52,23 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "serensa.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+DB_ENGINE = os.getenv("DB_ENGINE", "django.db.backends.sqlite3")
+
+if DB_ENGINE == "django_mongodb_backend":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django_mongodb_backend",
+            "NAME": os.getenv("MONGODB_NAME", "serensa"),
+            "HOST": os.getenv("MONGODB_URI", "mongodb://127.0.0.1:27017/"),
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

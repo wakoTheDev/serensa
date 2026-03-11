@@ -46,7 +46,8 @@ Per entry:
 ## Tech Stack
 
 - Django 5
-- SQLite (default)
+- SQLite (default, local fallback)
+- MongoDB Atlas (optional free tier)
 - Chart.js (CDN)
 - Vanilla CSS with responsive layout
 
@@ -63,6 +64,58 @@ python -m pip install -r requirements.txt
 ```bash
 python manage.py migrate
 ```
+
+### Use MongoDB Atlas Free Tier (Optional)
+
+This project now supports MongoDB through environment variables.
+
+1. Create a free MongoDB Atlas cluster:
+
+- Sign in to Atlas and create an M0 free cluster.
+- Create a database user (username/password).
+- In Network Access, allow your IP (or use 0.0.0.0/0 during development only).
+- Copy your connection string from Atlas.
+
+2. Set database environment variables:
+
+```bash
+export DB_ENGINE=django_mongodb_backend
+export MONGODB_NAME=serensa
+export MONGODB_URI='mongodb+srv://<username>:<password>@<cluster-host>/?retryWrites=true&w=majority'
+```
+
+3. Install dependencies and migrate:
+
+```bash
+python -m pip install -r requirements.txt
+python manage.py migrate
+```
+
+4. Create admin account and run:
+
+```bash
+python manage.py createsuperuser
+python manage.py runserver
+```
+
+### Move Existing SQLite Data To MongoDB
+
+If you already have data in SQLite and want to move it:
+
+1. With SQLite active (DB_ENGINE not set), export data:
+
+```bash
+python manage.py dumpdata --natural-foreign --natural-primary -e contenttypes -e auth.permission --indent 2 > data.json
+```
+
+2. Switch to MongoDB env vars (as above), migrate schema, then import:
+
+```bash
+python manage.py migrate
+python manage.py loaddata data.json
+```
+
+3. Verify by logging in and checking shops, users, and reports.
 
 3. Create an admin/superuser:
 
@@ -155,6 +208,12 @@ Set these in Vercel Project Settings -> Environment Variables:
 - `DJANGO_DEBUG=0`
 - `DJANGO_ALLOWED_HOSTS=.vercel.app,<your-custom-domain>`
 - `DJANGO_CSRF_TRUSTED_ORIGINS=https://<your-app>.vercel.app,https://<your-custom-domain>`
+
+If using MongoDB in production, also set:
+
+- `DB_ENGINE=django_mongodb_backend`
+- `MONGODB_NAME=serensa`
+- `MONGODB_URI=<your-atlas-connection-string>`
 
 And any app-level variables you use (for example Jenga credentials).
 
