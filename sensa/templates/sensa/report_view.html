@@ -2,12 +2,21 @@
 
 {% block content %}
 <section class="panel">
-    <div class="panel-head">
+    <div class="panel-head report-head">
         <h2>Reports</h2>
-        <div class="chip-row">
-            <a class="btn" href="{% url 'fetch_balance' %}">Fetch Equity Balance (Jenga)</a>
-            <a class="btn" href="{% url 'export_report_excel' %}?{{ request.GET.urlencode }}">Export Excel</a>
-            <a class="btn" href="{% url 'export_report_pdf' %}?{{ request.GET.urlencode }}">Export PDF</a>
+        <div class="report-actions">
+            <a class="btn" href="{% url 'fetch_balance' %}">
+                <span class="btn-icon" aria-hidden="true">B</span>
+                <span>Balance</span>
+            </a>
+            <a class="btn" href="{% url 'export_report_excel' %}?{{ request.GET.urlencode }}">
+                <span class="btn-icon" aria-hidden="true">X</span>
+                <span>Export Excel</span>
+            </a>
+            <a class="btn" href="{% url 'export_report_pdf' %}?{{ request.GET.urlencode }}">
+                <span class="btn-icon" aria-hidden="true">P</span>
+                <span>Export PDF</span>
+            </a>
         </div>
     </div>
     <form method="get" class="form-inline">
@@ -20,19 +29,28 @@
     {% endif %}
 </section>
 
-<section class="grid two">
-    <article class="panel">
-        <h3>Summary</h3>
-        <ul class="compact-list">
-            <li>Total Sales Value: {{ total_sales }}</li>
-            <li>Stock Consumed: {{ stock_consumed }}</li>
-            <li>Total Expenses: {{ totals.expenses|default:0 }}</li>
-            <li><strong>Profit/Loss: {{ profit_or_loss }}</strong></li>
-        </ul>
+<section class="panel">
+    <h3>Summary</h3>
+    <ul class="compact-list">
+        <li>Total Sales Value: {{ total_sales }}</li>
+        <li>Stock Consumed: {{ stock_consumed }}</li>
+        <li>Total Expenses: {{ totals.expenses|default:0 }}</li>
+        <li><strong>Profit/Loss: {{ profit_or_loss }}</strong></li>
+    </ul>
+</section>
+
+<section class="grid two report-chart-grid">
+    <article class="panel chart-panel">
+        <h3>Visual Report (Bar)</h3>
+        <div class="chart-wrap">
+            <canvas id="reportChart"></canvas>
+        </div>
     </article>
     <article class="panel chart-panel">
-        <h3>Visual Report</h3>
-        <canvas id="reportChart"></canvas>
+        <h3>Trend Line Report</h3>
+        <div class="chart-wrap trend-wrap">
+            <canvas id="trendChart"></canvas>
+        </div>
     </article>
 </section>
 

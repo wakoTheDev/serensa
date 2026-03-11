@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -288,9 +289,26 @@ def _build_report_dataset(query_data):
     total_sales = cash + debts
     profit_or_loss = total_sales - stock_consumed - expenses
 
+    trend_points = OrderedDict()
+    for entry in entries.order_by("entry_date"):
+        key = entry.entry_date.isoformat()
+        if key not in trend_points:
+            trend_points[key] = {
+                "sales": Decimal("0.00"),
+                "expenses": Decimal("0.00"),
+                "profit": Decimal("0.00"),
+            }
+        trend_points[key]["sales"] += (entry.cash_received or Decimal("0.00")) + (entry.debts or Decimal("0.00"))
+        trend_points[key]["expenses"] += entry.expenses or Decimal("0.00")
+        trend_points[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
+
     chart_payload = {
-        "labels": ["Sales", "Stock Consumed", "Expenses", "Profit/Loss"],
-        "values": [float(total_sales), float(stock_consumed), float(expenses), float(profit_or_loss)],
+        "summaryLabels": ["Sales", "Stock Consumed", "Expenses", "Profit/Loss"],
+        "summaryValues": [float(total_sales), float(stock_consumed), float(expenses), float(profit_or_loss)],
+        "trendLabels": list(trend_points.keys()),
+        "trendSales": [float(point["sales"]) for point in trend_points.values()],
+        "trendExpenses": [float(point["expenses"]) for point in trend_points.values()],
+        "trendProfit": [float(point["profit"]) for point in trend_points.values()],
     }
 
     return {
