@@ -22,13 +22,13 @@
             <a href="{% url 'dashboard' %}">Dashboard</a>
             <a href="{% url 'entry_create_or_update' %}">New Entry</a>
             {% if user.profile.is_admin %}
-            <a href="{% url 'shop_list' %}">Shops</a>
+            <a href="{% url 'shop_list'%}">Shops</a>
             <a href="{% url 'report_view' %}">Reports</a>
             <a href="{% url 'user_list' %}">Users</a>
             {% endif %}
             <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}
-                <button class="link-btn" type="submit">Logout</button>
+                <button class="link-btn" style="background-color:red padding:2px color:black" type="submit">Logout</button>
             </form>
         </nav>
     </header>
