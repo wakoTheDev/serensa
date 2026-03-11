@@ -13,9 +13,20 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate Vercel Secrets
+        shell: bash
+        run: |
+          [[ -n "$VERCEL_TOKEN" ]] || { echo "Missing GitHub Actions secret: VERCEL_TOKEN"; exit 1; }
+          [[ -n "$VERCEL_ORG_ID" ]] || { echo "Missing GitHub Actions secret: VERCEL_ORG_ID"; exit 1; }
+          [[ -n "$VERCEL_PROJECT_ID" ]] || { echo "Missing GitHub Actions secret: VERCEL_PROJECT_ID"; exit 1; }
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -34,10 +45,7 @@ jobs:
         run: npm install --global vercel@latest
 
       - name: Pull Vercel Environment
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
       - name: Run Django Migrations
         shell: bash
@@ -48,7 +56,4 @@ jobs:
           python manage.py migrate --noinput
 
       - name: Deploy Production
-        run: vercel deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel deploy --prod --yes --token="$VERCEL_TOKEN"
