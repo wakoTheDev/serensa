@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm
@@ -16,6 +18,15 @@ class ShopForm(forms.ModelForm):
 
 
 class DailyEntryForm(forms.ModelForm):
+    mobile_money_received = forms.DecimalField(
+        required=False,
+        min_value=Decimal("0.00"),
+        decimal_places=2,
+        max_digits=14,
+        label="Mobile Money",
+        help_text="Optional. Enter any two of Credit, Cash, and Mobile. The third is auto-calculated.",
+    )
+
     class Meta:
         model = DailyEntry
         fields = [
@@ -32,6 +43,9 @@ class DailyEntryForm(forms.ModelForm):
         widgets = {
             "entry_date": forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(attrs={"rows": 3}),
+            "debts": forms.NumberInput(attrs={"step": "0.01", "placeholder": "Optional if cash and mobile are provided"}),
+            "cash_received": forms.NumberInput(attrs={"step": "0.01", "placeholder": "Optional if credit and mobile are provided"}),
+            "sales_value": forms.NumberInput(attrs={"step": "0.01"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -47,20 +61,52 @@ class DailyEntryForm(forms.ModelForm):
         if user and hasattr(user, "profile") and not user.profile.is_admin:
             self.fields["shop"].queryset = user.profile.assigned_shops.filter(active=True)
 
+        # Allow system-assisted calculation for any one of debt/cash/mobile.
+        self.fields["debts"].required = False
+        self.fields["cash_received"].required = False
+
+        if getattr(self.instance, "pk", None) and not self.is_bound:
+            self.fields["mobile_money_received"].initial = self.instance.mobile_money_received
+
     def clean(self):
         cleaned_data = super().clean()
-        sales_value = cleaned_data.get("sales_value") or 0
-        debts = cleaned_data.get("debts") or 0
-        cash_received = cleaned_data.get("cash_received") or 0
+        sales_value = cleaned_data.get("sales_value")
+        debts = cleaned_data.get("debts")
+        cash_received = cleaned_data.get("cash_received")
+        mobile_money = cleaned_data.get("mobile_money_received")
 
-        if debts > sales_value:
-            self.add_error("debts", "Credit sales cannot be greater than total sales.")
+        if sales_value is None:
+            return cleaned_data
 
-        if cash_received + debts > sales_value:
-            self.add_error(
-                "cash_received",
-                "Cash plus credit sales cannot be greater than total sales.",
+        provided_count = sum(v is not None for v in [debts, cash_received, mobile_money])
+        if provided_count < 2:
+            raise forms.ValidationError(
+                "Enter at least two payment values among Credit, Cash, and Mobile so the third can be calculated."
             )
+
+        if debts is None:
+            debts = sales_value - (cash_received or Decimal("0.00")) - (mobile_money or Decimal("0.00"))
+        elif cash_received is None:
+            cash_received = sales_value - debts - (mobile_money or Decimal("0.00"))
+        elif mobile_money is None:
+            mobile_money = sales_value - debts - cash_received
+
+        if debts < Decimal("0.00"):
+            self.add_error("debts", "Calculated credit sales cannot be negative. Check values entered.")
+        if cash_received < Decimal("0.00"):
+            self.add_error("cash_received", "Calculated cash received cannot be negative. Check values entered.")
+        if mobile_money < Decimal("0.00"):
+            self.add_error("mobile_money_received", "Calculated mobile money cannot be negative. Check values entered.")
+
+        reconciliation_total = debts + cash_received + mobile_money
+        if reconciliation_total != sales_value:
+            raise forms.ValidationError(
+                "Credit + Cash + Mobile must exactly equal Total Sales."
+            )
+
+        cleaned_data["debts"] = debts
+        cleaned_data["cash_received"] = cash_received
+        cleaned_data["mobile_money_received"] = mobile_money
 
         return cleaned_data
 
