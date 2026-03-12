@@ -144,14 +144,40 @@ def entry_create_or_update(request):
 
     edit_entry = None
     opening_stock_value = Decimal("0.00")
+    manual_opening_required = False
 
     if request.method == "POST":
         shop_id = request.POST.get("shop")
         entry_date = request.POST.get("entry_date")
+        posted_shop = None
+        posted_entry_date = None
         if shop_id and entry_date:
             edit_entry = DailyEntry.objects.filter(shop_id=shop_id, entry_date=entry_date).first()
+            posted_shop = Shop.objects.filter(pk=shop_id).first()
+            try:
+                posted_entry_date = datetime.strptime(entry_date, "%Y-%m-%d").date()
+            except ValueError:
+                posted_entry_date = None
 
-        form = DailyEntryForm(request.POST, user=user, instance=edit_entry)
+        previous_closing = _get_previous_closing_stock(
+            posted_shop,
+            posted_entry_date,
+            current_entry=edit_entry,
+        )
+        manual_opening_required = previous_closing is None
+        opening_stock_value = (
+            previous_closing
+            if previous_closing is not None
+            else (edit_entry.opening_stock if edit_entry else Decimal("0.00"))
+        )
+
+        form = DailyEntryForm(
+            request.POST,
+            user=user,
+            instance=edit_entry,
+            require_opening_stock=manual_opening_required,
+            calculated_opening_stock=opening_stock_value,
+        )
         if form.is_valid():
             shop = form.cleaned_data["shop"]
             if _is_vendor(user) and not user.profile.assigned_shops.filter(pk=shop.pk).exists():
@@ -159,7 +185,12 @@ def entry_create_or_update(request):
 
             entry = form.save(commit=False)
             is_update = bool(entry.pk)
-            entry.opening_stock = _derive_opening_stock(shop, entry.entry_date, current_entry=edit_entry)
+            previous_closing = _get_previous_closing_stock(shop, entry.entry_date, current_entry=edit_entry)
+            manual_opening_required = previous_closing is None
+            if manual_opening_required:
+                entry.opening_stock = form.cleaned_data["opening_stock"]
+            else:
+                entry.opening_stock = previous_closing
             opening_stock_value = entry.opening_stock
 
             if entry.entry_date == today or _is_admin(user):
@@ -183,7 +214,13 @@ def entry_create_or_update(request):
                 parsed_date = datetime.strptime(bound_date, "%Y-%m-%d").date()
             except ValueError:
                 parsed_date = today
-            opening_stock_value = _derive_opening_stock(shop, parsed_date, current_entry=edit_entry)
+            previous_closing = _get_previous_closing_stock(shop, parsed_date, current_entry=edit_entry)
+            manual_opening_required = previous_closing is None
+            opening_stock_value = (
+                previous_closing
+                if previous_closing is not None
+                else (edit_entry.opening_stock if edit_entry else Decimal("0.00"))
+            )
     else:
         initial = {"entry_date": today}
 
@@ -204,18 +241,39 @@ def entry_create_or_update(request):
                 edit_entry = DailyEntry.objects.filter(shop=selected_shop, entry_date=today).first()
 
         if edit_entry:
-            form = DailyEntryForm(user=user, instance=edit_entry)
-            opening_stock_value = _derive_opening_stock(edit_entry.shop, edit_entry.entry_date, current_entry=edit_entry)
+            previous_closing = _get_previous_closing_stock(
+                edit_entry.shop,
+                edit_entry.entry_date,
+                current_entry=edit_entry,
+            )
+            manual_opening_required = previous_closing is None
+            opening_stock_value = (
+                previous_closing if previous_closing is not None else edit_entry.opening_stock
+            )
+            form = DailyEntryForm(
+                user=user,
+                instance=edit_entry,
+                require_opening_stock=manual_opening_required,
+                calculated_opening_stock=opening_stock_value,
+            )
         else:
-            form = DailyEntryForm(user=user, initial=initial)
             preview_shop = initial.get("shop")
             preview_date = initial.get("entry_date", today)
-            opening_stock_value = _derive_opening_stock(preview_shop, preview_date)
+            previous_closing = _get_previous_closing_stock(preview_shop, preview_date)
+            manual_opening_required = previous_closing is None
+            opening_stock_value = previous_closing if previous_closing is not None else Decimal("0.00")
+            form = DailyEntryForm(
+                user=user,
+                initial=initial,
+                require_opening_stock=manual_opening_required,
+                calculated_opening_stock=opening_stock_value,
+            )
 
     context = {
         "form": form,
         "is_edit_mode": bool(edit_entry),
         "opening_stock_value": opening_stock_value,
+        "manual_opening_required": manual_opening_required,
         "form_title": "Update Shop Values" if edit_entry else "Feed Shop Values",
         "form_subtitle": (
             "Editing today's saved entry. Update the fields and submit changes."
@@ -309,6 +367,25 @@ def _derive_opening_stock(shop, entry_date, current_entry=None):
         return latest_previous_entry.closing_stock or Decimal("0.00")
 
     return Decimal("0.00")
+
+
+def _get_previous_closing_stock(shop, entry_date, current_entry=None):
+    if not shop or not entry_date:
+        return None
+
+    entries = DailyEntry.objects.filter(shop=shop)
+    if current_entry and current_entry.pk:
+        entries = entries.exclude(pk=current_entry.pk)
+
+    previous_day_entry = entries.filter(entry_date=entry_date - timedelta(days=1)).first()
+    if previous_day_entry:
+        return previous_day_entry.closing_stock or Decimal("0.00")
+
+    latest_previous_entry = entries.filter(entry_date__lt=entry_date).order_by("-entry_date", "-updated_at").first()
+    if latest_previous_entry:
+        return latest_previous_entry.closing_stock or Decimal("0.00")
+
+    return None
 
 
 def _calculate_stock_metrics(entries):

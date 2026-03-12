@@ -32,6 +32,7 @@ class DailyEntryForm(forms.ModelForm):
         fields = [
             "shop",
             "entry_date",
+            "opening_stock",
             "stock_added",
             "expenses",
             "sales_value",
@@ -50,6 +51,8 @@ class DailyEntryForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         user = kwargs.pop("user", None)
+        require_opening_stock = kwargs.pop("require_opening_stock", False)
+        calculated_opening_stock = kwargs.pop("calculated_opening_stock", Decimal("0.00"))
         super().__init__(*args, **kwargs)
         if (
             not self.is_bound
@@ -64,6 +67,20 @@ class DailyEntryForm(forms.ModelForm):
         # Allow system-assisted calculation for any one of debt/cash/mobile.
         self.fields["debts"].required = False
         self.fields["cash_received"].required = False
+
+        if require_opening_stock:
+            self.fields["opening_stock"].required = True
+            self.fields["opening_stock"].disabled = False
+            self.fields["opening_stock"].help_text = (
+                "First entry for this shop: enter opening stock manually."
+            )
+        else:
+            self.fields["opening_stock"].required = False
+            self.fields["opening_stock"].initial = calculated_opening_stock
+            self.fields["opening_stock"].disabled = True
+            self.fields["opening_stock"].help_text = (
+                "Auto-loaded from previous closing stock."
+            )
 
         if getattr(self.instance, "pk", None) and not self.is_bound:
             self.fields["mobile_money_received"].initial = self.instance.mobile_money_received
