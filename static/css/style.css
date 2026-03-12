@@ -318,6 +318,7 @@ th, td {
 .filter-actions .btn {
   min-width: 120px;
   flex: 1;
+  white-space: nowrap;
 }
 
 .filter-errors {
