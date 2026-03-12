@@ -12,7 +12,7 @@
                         New Entry
                 {% endif %}
         </p>
-    <form method="post" class="form-grid">
+    <form method="post" class="entry-form-grid">
         {% csrf_token %}
         {{ form.as_p }}
                 <button class="btn" type="submit">{{ submit_label }}</button>
