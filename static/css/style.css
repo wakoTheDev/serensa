@@ -217,7 +217,11 @@ th, td {
 
 .ledger-actions-cell {
   white-space: nowrap;
-  display: flex;
+  vertical-align: middle;
+}
+
+.ledger-actions-wrap {
+  display: inline-flex;
   gap: 0.25rem;
   align-items: center;
 }
