@@ -279,7 +279,7 @@ def _build_report_dataset(query_data):
     entries = DailyEntry.objects.select_related("shop", "submitted_by")
 
     today = timezone.localdate()
-    if form.is_valid():
+    if form.is_bound and form.is_valid():
         period = form.cleaned_data.get("period") or "daily"
         selected_date = form.cleaned_data.get("date") or today
         start_date = form.cleaned_data.get("start_date")
@@ -288,18 +288,41 @@ def _build_report_dataset(query_data):
         if start_date or end_date:
             start = start_date or end_date
             end = end_date or start_date
+            filter_mode = "date_range"
         else:
             start, end = _date_range(period, selected_date)
+            filter_mode = "period"
         selected_shop = form.cleaned_data.get("shop")
     else:
-        period = "daily"
+        period = "historical"
         selected_date = today
-        start = end = today
+        start = entries.order_by("entry_date").values_list("entry_date", flat=True).first() or today
+        end = today
         selected_shop = None
+        filter_mode = "historical"
 
-    entries = entries.filter(entry_date__range=(start, end))
+    entries = entries.filter(entry_date__range=(start, end)).order_by("entry_date", "shop__name")
     if selected_shop:
         entries = entries.filter(shop=selected_shop)
+
+    shops_in_scope = Shop.objects.filter(active=True)
+    if selected_shop:
+        chart_shop = selected_shop
+    else:
+        chart_shop = (
+            shops_in_scope.filter(entries__entry_date__range=(start, end))
+            .distinct()
+            .order_by("name")
+            .first()
+        )
+
+    if chart_shop:
+        shop_entries = DailyEntry.objects.filter(
+            shop=chart_shop,
+            entry_date__range=(start, end),
+        ).order_by("entry_date")
+    else:
+        shop_entries = DailyEntry.objects.none()
 
     totals = entries.aggregate(
         opening_stock=Sum("opening_stock"),
@@ -319,53 +342,159 @@ def _build_report_dataset(query_data):
 
     stock_consumed = opening + added - closing
     profit_or_loss = total_sales - stock_consumed - expenses
+    net_profit = profit_or_loss if profit_or_loss > Decimal("0.00") else Decimal("0.00")
+    net_loss = abs(profit_or_loss) if profit_or_loss < Decimal("0.00") else Decimal("0.00")
 
-    daily_points = OrderedDict()
+    # Shop-specific historical trend (progressive/cumulative).
+    shop_daily_points = OrderedDict()
     cursor = start
     while cursor <= end:
-        daily_points[cursor.isoformat()] = {
+        shop_daily_points[cursor.isoformat()] = {
             "sales": Decimal("0.00"),
             "expenses": Decimal("0.00"),
+            "debts": Decimal("0.00"),
             "profit": Decimal("0.00"),
         }
         cursor += timedelta(days=1)
 
-    for entry in entries.order_by("entry_date"):
+    for entry in shop_entries:
         key = entry.entry_date.isoformat()
-        if key not in daily_points:
-            daily_points[key] = {
+        if key not in shop_daily_points:
+            shop_daily_points[key] = {
                 "sales": Decimal("0.00"),
                 "expenses": Decimal("0.00"),
+                "debts": Decimal("0.00"),
                 "profit": Decimal("0.00"),
             }
-        daily_points[key]["sales"] += entry.sales_value or Decimal("0.00")
-        daily_points[key]["expenses"] += entry.expenses or Decimal("0.00")
-        daily_points[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
+        shop_daily_points[key]["sales"] += entry.sales_value or Decimal("0.00")
+        shop_daily_points[key]["expenses"] += entry.expenses or Decimal("0.00")
+        shop_daily_points[key]["debts"] += entry.debts or Decimal("0.00")
+        shop_daily_points[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
 
-    progressive_sales = []
-    progressive_expenses = []
-    progressive_profit = []
+    progressive_shop_sales = []
+    progressive_shop_expenses = []
+    progressive_shop_profit = []
     running_sales = Decimal("0.00")
     running_expenses = Decimal("0.00")
     running_profit = Decimal("0.00")
 
-    for point in daily_points.values():
+    for point in shop_daily_points.values():
         running_sales += point["sales"]
         running_expenses += point["expenses"]
         running_profit += point["profit"]
-        progressive_sales.append(float(running_sales))
-        progressive_expenses.append(float(running_expenses))
-        progressive_profit.append(float(running_profit))
+        progressive_shop_sales.append(float(running_sales))
+        progressive_shop_expenses.append(float(running_expenses))
+        progressive_shop_profit.append(float(running_profit))
+
+    # Shop-specific same-day bar snapshot.
+    bar_date = selected_date if filter_mode == "period" else end
+    if filter_mode == "historical":
+        bar_date = today
+
+    shop_day_entries = DailyEntry.objects.none()
+    if chart_shop:
+        shop_day_entries = DailyEntry.objects.filter(shop=chart_shop, entry_date=bar_date)
+
+    day_sales = Decimal("0.00")
+    day_expenses = Decimal("0.00")
+    day_debts = Decimal("0.00")
+    day_cash = Decimal("0.00")
+    day_profit = Decimal("0.00")
+
+    for entry in shop_day_entries:
+        day_sales += entry.sales_value or Decimal("0.00")
+        day_expenses += entry.expenses or Decimal("0.00")
+        day_debts += entry.debts or Decimal("0.00")
+        day_cash += entry.cash_received or Decimal("0.00")
+        day_profit += entry.profit_or_loss or Decimal("0.00")
+
+    # All-shops cumulative trend across selected range.
+    all_daily_points = OrderedDict()
+    cursor = start
+    while cursor <= end:
+        all_daily_points[cursor.isoformat()] = {
+            "sales": Decimal("0.00"),
+            "expenses": Decimal("0.00"),
+            "debts": Decimal("0.00"),
+            "profit": Decimal("0.00"),
+        }
+        cursor += timedelta(days=1)
+
+    for entry in entries:
+        key = entry.entry_date.isoformat()
+        all_daily_points[key]["sales"] += entry.sales_value or Decimal("0.00")
+        all_daily_points[key]["expenses"] += entry.expenses or Decimal("0.00")
+        all_daily_points[key]["debts"] += entry.debts or Decimal("0.00")
+        all_daily_points[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
+
+    cumulative_sales = []
+    cumulative_expenses = []
+    cumulative_debts = []
+    cumulative_profit = []
+    running_sales_all = Decimal("0.00")
+    running_expenses_all = Decimal("0.00")
+    running_debts_all = Decimal("0.00")
+    running_profit_all = Decimal("0.00")
+
+    for point in all_daily_points.values():
+        running_sales_all += point["sales"]
+        running_expenses_all += point["expenses"]
+        running_debts_all += point["debts"]
+        running_profit_all += point["profit"]
+        cumulative_sales.append(float(running_sales_all))
+        cumulative_expenses.append(float(running_expenses_all))
+        cumulative_debts.append(float(running_debts_all))
+        cumulative_profit.append(float(running_profit_all))
+
+    # Per-shop comparison across selected range.
+    shop_compare = OrderedDict()
+    for entry in entries:
+        key = entry.shop.name
+        if key not in shop_compare:
+            shop_compare[key] = {
+                "sales": Decimal("0.00"),
+                "expenses": Decimal("0.00"),
+                "debts": Decimal("0.00"),
+                "profit": Decimal("0.00"),
+            }
+        shop_compare[key]["sales"] += entry.sales_value or Decimal("0.00")
+        shop_compare[key]["expenses"] += entry.expenses or Decimal("0.00")
+        shop_compare[key]["debts"] += entry.debts or Decimal("0.00")
+        shop_compare[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
 
     chart_payload = {
-        "barLabels": list(daily_points.keys()),
-        "barSales": progressive_sales,
-        "barExpenses": progressive_expenses,
-        "barProfit": progressive_profit,
-        "trendLabels": list(daily_points.keys()),
-        "trendSales": progressive_sales,
-        "trendExpenses": progressive_expenses,
-        "trendProfit": progressive_profit,
+        "shopName": chart_shop.name if chart_shop else "No Shop",
+        "shopBarDate": str(bar_date),
+        "shopBarLabels": ["Sales", "Expenses", "Debts", "Cash", "Profit/Loss"],
+        "shopBarValues": [
+            float(day_sales),
+            float(day_expenses),
+            float(day_debts),
+            float(day_cash),
+            float(day_profit),
+        ],
+        "trendLabels": list(shop_daily_points.keys()),
+        "trendSales": progressive_shop_sales,
+        "trendExpenses": progressive_shop_expenses,
+        "trendProfit": progressive_shop_profit,
+        "allCumulativeLabels": list(all_daily_points.keys()),
+        "allCumulativeSales": cumulative_sales,
+        "allCumulativeExpenses": cumulative_expenses,
+        "allCumulativeDebts": cumulative_debts,
+        "allCumulativeProfit": cumulative_profit,
+        "shopCompareLabels": list(shop_compare.keys()),
+        "shopCompareSales": [float(v["sales"]) for v in shop_compare.values()],
+        "shopCompareExpenses": [float(v["expenses"]) for v in shop_compare.values()],
+        "shopCompareDebts": [float(v["debts"]) for v in shop_compare.values()],
+        "shopCompareProfit": [float(v["profit"]) for v in shop_compare.values()],
+        "generalPieLabels": ["Sales", "Expenses", "Debts", "Net Profit", "Net Loss"],
+        "generalPieValues": [
+            float(total_sales),
+            float(expenses),
+            float(totals["debts"] or Decimal("0.00")),
+            float(net_profit),
+            float(net_loss),
+        ],
     }
 
     return {
@@ -375,6 +504,9 @@ def _build_report_dataset(query_data):
         "end": end,
         "period": period,
         "selected_date": selected_date,
+        "filter_mode": filter_mode,
+        "shop_chart_title": f"{chart_payload['shopName']} Historical Trend",
+        "shop_bar_title": f"{chart_payload['shopName']} Day Snapshot ({chart_payload['shopBarDate']})",
         "totals": totals,
         "stock_consumed": stock_consumed,
         "total_sales": total_sales,

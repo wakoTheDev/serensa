@@ -22,8 +22,9 @@
     <form method="get" class="form-inline">
         {{ form.as_p }}
         <button class="btn" type="submit">Apply Filter</button>
+        <a class="btn" href="{% url 'report_view' %}">Clear Filters</a>
     </form>
-    <p>Period: {{ start }} to {{ end }}</p>
+    <p>Period: {{ start }} to {{ end }} ({{ filter_mode }})</p>
     {% if balance %}
     <p class="muted">Latest Equity Balance: {{ balance.balance }} ({{ balance.fetched_at }})</p>
     {% endif %}
@@ -41,17 +42,39 @@
 
 <section class="grid two report-chart-grid">
     <article class="panel chart-panel">
-        <h3>Visual Report (Bar)</h3>
+        <h3>{{ shop_bar_title }}</h3>
         <div class="chart-wrap">
             <canvas id="reportChart"></canvas>
         </div>
     </article>
     <article class="panel chart-panel">
-        <h3>Trend Line Report</h3>
+        <h3>{{ shop_chart_title }}</h3>
         <div class="chart-wrap trend-wrap">
             <canvas id="trendChart"></canvas>
         </div>
     </article>
+</section>
+
+<section class="grid two report-chart-grid">
+    <article class="panel chart-panel">
+        <h3>All Shops Cumulative Trend</h3>
+        <div class="chart-wrap trend-wrap">
+            <canvas id="generalCumulativeChart"></canvas>
+        </div>
+    </article>
+    <article class="panel chart-panel">
+        <h3>Per-Shop Comparison</h3>
+        <div class="chart-wrap">
+            <canvas id="shopComparisonChart"></canvas>
+        </div>
+    </article>
+</section>
+
+<section class="panel chart-panel">
+    <h3>General Distribution (All Shops)</h3>
+    <div class="chart-wrap trend-wrap">
+        <canvas id="generalPieChart"></canvas>
+    </div>
 </section>
 
 <section class="panel">
