@@ -480,11 +480,15 @@ def _build_report_dataset(query_data):
         selected_shop = None
         filter_mode = "historical"
 
-    entries_qs = entries_qs.filter(entry_date__range=(start, end)).order_by("entry_date", "shop__name")
+    entries_in_range_qs = entries_qs.filter(entry_date__range=(start, end)).order_by("entry_date", "shop__name")
+    entries_qs = entries_in_range_qs
     if selected_shop:
         entries_qs = entries_qs.filter(shop=selected_shop)
 
+    # `entries` remain filter-aware for ledger/shop-specific sections,
+    # while `general_entries` always represent all shops in the selected date window.
     entries = list(entries_qs)
+    general_entries = list(entries_in_range_qs)
 
     shops_in_scope = Shop.objects.filter(active=True)
     if selected_shop:
@@ -592,7 +596,7 @@ def _build_report_dataset(query_data):
         }
         cursor += timedelta(days=1)
 
-    for entry in entries:
+    for entry in general_entries:
         key = entry.entry_date.isoformat()
         all_daily_points[key]["sales"] += entry.sales_value or Decimal("0.00")
         all_daily_points[key]["expenses"] += entry.expenses or Decimal("0.00")
@@ -621,7 +625,7 @@ def _build_report_dataset(query_data):
     shop_compare = OrderedDict()
     shop_daily_data = OrderedDict()
 
-    for entry in entries:
+    for entry in general_entries:
         shop_key = entry.shop.name
         if shop_key not in shop_compare:
             shop_compare[shop_key] = {
@@ -651,6 +655,22 @@ def _build_report_dataset(query_data):
         shop_daily_data[shop_key][entry_key]["sales"] += entry.sales_value or Decimal("0.00")
         shop_daily_data[shop_key][entry_key]["expenses"] += entry.expenses or Decimal("0.00")
         shop_daily_data[shop_key][entry_key]["profit"] += entry.profit_or_loss or Decimal("0.00")
+
+    general_stock_metrics = _calculate_stock_metrics(general_entries)
+    general_total_sales = sum((entry.sales_value or Decimal("0.00") for entry in general_entries), Decimal("0.00"))
+    general_total_expenses = sum((entry.expenses or Decimal("0.00") for entry in general_entries), Decimal("0.00"))
+    general_total_debts = sum((entry.debts or Decimal("0.00") for entry in general_entries), Decimal("0.00"))
+    general_total_cash = sum((entry.cash_received or Decimal("0.00") for entry in general_entries), Decimal("0.00"))
+    general_total_mobile = sum((entry.mobile_money_received for entry in general_entries), Decimal("0.00"))
+    general_profit_or_loss = (
+        general_total_sales - general_stock_metrics["stock_consumed"] - general_total_expenses
+    )
+    general_net_profit = (
+        general_profit_or_loss if general_profit_or_loss > Decimal("0.00") else Decimal("0.00")
+    )
+    general_net_loss = (
+        abs(general_profit_or_loss) if general_profit_or_loss < Decimal("0.00") else Decimal("0.00")
+    )
 
     chart_payload = {
         "shopName": chart_shop.name if chart_shop else "No Shop",
@@ -691,13 +711,13 @@ def _build_report_dataset(query_data):
         "shopCompareProfit": [float(v["profit"]) for v in shop_compare.values()],
         "generalPieLabels": ["Sales", "Expenses", "Credit", "Cash", "Mobile", "Net Profit", "Net Loss"],
         "generalPieValues": [
-            float(total_sales),
-            float(total_expenses),
-            float(total_debts),
-            float(total_cash),
-            float(total_mobile_money),
-            float(net_profit),
-            float(net_loss),
+            float(general_total_sales),
+            float(general_total_expenses),
+            float(general_total_debts),
+            float(general_total_cash),
+            float(general_total_mobile),
+            float(general_net_profit),
+            float(general_net_loss),
         ],
     }
 
