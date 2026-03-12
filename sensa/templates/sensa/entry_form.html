@@ -5,11 +5,11 @@
         <h2>{{ form_title }}</h2>
         <p>{{ form_subtitle }}</p>
     {% if manual_opening_required %}
-    <p><strong>Opening Stock:</strong> <span class="muted">First entry for this shop - enter opening stock manually.</span></p>
+    <!-- <p><strong>Opening Stock:</strong> <span class="muted">First entry for this shop - enter opening stock manually.</span></p> -->
     {% else %}
-    <p><strong>Opening Stock:</strong> {{ opening_stock_value }} <span class="muted">(auto-filled from the most recent closing stock)</span></p>
+    <!-- <p><strong>Opening Stock:</strong> {{ opening_stock_value }} <span class="muted">(auto-filled from the most recent closing stock)</span></p> -->
     {% endif %}
-    <p class="muted"><strong>Accuracy Tip:</strong> Enter any two among <em>Credit</em>, <em>Cash</em>, and <em>Mobile Money</em>. The remaining one is auto-calculated from Total Sales.</p>
+    <!-- <p class="muted"><strong>Accuracy Tip:</strong> Enter any two among <em>Credit</em>, <em>Cash</em>, and <em>Mobile Money</em>. The remaining one is auto-calculated from Total Sales.</p> -->
         <p>
                 <strong>Mode:</strong>
                 {% if is_edit_mode %}
