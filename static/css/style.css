@@ -312,11 +312,12 @@ th, td {
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .filter-actions .btn {
-  min-width: 130px;
+  min-width: 120px;
+  flex: 1;
 }
 
 .filter-errors {
