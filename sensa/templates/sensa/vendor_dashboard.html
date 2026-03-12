@@ -17,7 +17,7 @@
         <h3>Today's Records</h3>
         <ul class="compact-list">
             {% for entry in todays_entries %}
-            <li>{{ entry.shop.name }} | Sales {{ entry.sales_value }} | Cash {{ entry.cash_received }} | P/L {{ entry.profit_or_loss }}</li>
+            <li>{{ entry.shop.name }} | Sales {{ entry.sales_value }} | Cash {{ entry.cash_received }} | Mobile {{ entry.mobile_money_received }} | P/L {{ entry.profit_or_loss }}</li>
             {% empty %}
             <li>No records submitted today.</li>
             {% endfor %}
@@ -33,6 +33,7 @@
             <p>Closing: {{ latest_entry.closing_stock }}</p>
             <p>Sales: {{ latest_entry.sales_value }}</p>
             <p>Cash: {{ latest_entry.cash_received }}</p>
+            <p>Mobile: {{ latest_entry.mobile_money_received }}</p>
         {% else %}
             <p>No record yet.</p>
         {% endif %}

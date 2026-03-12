@@ -12,6 +12,7 @@ urlpatterns = [
     path("shops/new/", views.shop_create, name="shop_create"),
     path("shops/<str:pk>/edit/", views.shop_edit, name="shop_edit"),
     path("shops/<str:pk>/delete/", views.shop_delete, name="shop_delete"),
+    path("settings/jenga/", views.jenga_settings_view, name="jenga_settings"),
     path("reports/", views.report_view, name="report_view"),
     path("reports/fetch-balance/", views.fetch_balance, name="fetch_balance"),
     path("reports/export/excel/", views.export_report_excel, name="export_report_excel"),

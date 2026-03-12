@@ -55,7 +55,7 @@
     </form>
     <p>Period: {{ start }} to {{ end }} ({{ filter_mode }})</p>
     {% if balance %}
-    <p class="muted">Latest Equity Balance: {{ balance.balance }} ({{ balance.fetched_at }})</p>
+    <p class="muted">Latest fetched balance: {{ balance.balance }} ({{ balance.fetched_at }})</p>
     {% endif %}
 </section>
 
@@ -63,10 +63,20 @@
     <h3>Summary</h3>
     <ul class="compact-list">
         <li>Total Sales Value: {{ total_sales }}</li>
+        <li>Paid Sales: {{ paid_sales_total }}</li>
+        <li>Cash Received: {{ totals.cash_received|default:0 }}</li>
+        <li>Mobile Money: {{ mobile_money_total }}</li>
+        <li>Credit Sales: {{ totals.debts|default:0 }}</li>
         <li>Stock Consumed: {{ stock_consumed }}</li>
         <li>Total Expenses: {{ totals.expenses|default:0 }}</li>
+        <li>Bank Opening Balance: {{ bank_opening_balance }}</li>
+        <li>Bank Closing Balance: {{ bank_closing_balance }}</li>
+        <li>Bank Received: {{ bank_received }}</li>
         <li><strong>Profit/Loss: {{ profit_or_loss }}</strong></li>
     </ul>
+    {% if not bank_has_delta %}
+    <p class="muted">Bank receipts are only exact when a balance was fetched before the start date and again within the selected period.</p>
+    {% endif %}
 </section>
 
 <section class="panel">
@@ -97,7 +107,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>Date</th><th>Shop</th><th>Open</th><th>Added</th><th>Expenses</th><th>Sales</th><th>Debts</th><th>Closing</th><th>Cash</th><th>P/L</th>
+                    <th>Date</th><th>Shop</th><th>Open</th><th>Added</th><th>Expenses</th><th>Sales</th><th>Credit</th><th>Closing</th><th>Cash</th><th>Mobile</th><th>P/L</th>
                 </tr>
             </thead>
             <tbody>
@@ -112,10 +122,11 @@
                     <td>{{ entry.debts }}</td>
                     <td>{{ entry.closing_stock }}</td>
                     <td>{{ entry.cash_received }}</td>
+                    <td>{{ entry.mobile_money_received }}</td>
                     <td>{{ entry.profit_or_loss }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="10">No records in selected period.</td></tr>
+                <tr><td colspan="11">No records in selected period.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

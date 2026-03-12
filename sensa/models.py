@@ -115,9 +115,56 @@ class DailyEntry(models.Model):
         return self.sales_value or Decimal("0.00")
 
     @property
+    def mobile_money_received(self):
+        paid_sales = self.total_sales_value - (self.debts or Decimal("0.00"))
+        mobile_money = paid_sales - (self.cash_received or Decimal("0.00"))
+        return mobile_money if mobile_money > Decimal("0.00") else Decimal("0.00")
+
+    @property
     def profit_or_loss(self):
-        # Value-based P/L: sales minus stock consumed and expenses.
+        # Gross margin after cost of stock sold and operating expenses.
         return self.total_sales_value - self.stock_consumed - (self.expenses or Decimal("0.00"))
+
+
+class JengaApiSettings(models.Model):
+    HTTP_GET = "GET"
+    HTTP_POST = "POST"
+    HTTP_METHOD_CHOICES = [(HTTP_GET, "GET"), (HTTP_POST, "POST")]
+
+    provider_name = models.CharField(max_length=50, default="Jenga")
+    account_reference = models.CharField(max_length=100, unique=True)
+    auth_endpoint = models.URLField(blank=True)
+    balance_endpoint = models.URLField()
+    client_id = models.CharField(max_length=255, blank=True)
+    client_secret = models.CharField(max_length=255, blank=True)
+    api_key = models.CharField(max_length=255, blank=True)
+    api_token = models.CharField(max_length=255, blank=True)
+    grant_type = models.CharField(max_length=50, default="client_credentials")
+    scope = models.CharField(max_length=255, blank=True)
+    balance_http_method = models.CharField(
+        max_length=10,
+        choices=HTTP_METHOD_CHOICES,
+        default=HTTP_POST,
+    )
+    balance_field_path = models.CharField(max_length=255, default="balance")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return f"{self.provider_name} - {self.account_reference}"
+
+    @property
+    def uses_static_token(self):
+        return bool(self.api_token)
+
+    @property
+    def is_configured(self):
+        has_auth_flow = bool(
+            self.auth_endpoint and self.client_id and self.client_secret and self.balance_endpoint
+        )
+        return bool(self.balance_endpoint and self.account_reference and (self.api_token or has_auth_flow))
 
 
 class BankBalanceSnapshot(models.Model):

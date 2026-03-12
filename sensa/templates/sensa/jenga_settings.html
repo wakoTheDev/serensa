@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="panel auth-panel">
+    <h2>Jenga Settings</h2>
+    <p>Set the receiving account and live API credentials used when fetching bank balances.</p>
+    {% if settings_obj %}
+    <p class="muted">Current account: {{ settings_obj.account_reference }} | Updated: {{ settings_obj.updated_at }}</p>
+    {% endif %}
+    <form method="post" class="form-grid">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn">Save Settings</button>
+    </form>
+</section>
+{% endblock %}

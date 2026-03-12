@@ -3,6 +3,8 @@ from decimal import Decimal
 
 import requests
 
+from .models import JengaApiSettings
+
 
 def _extract_value(payload, path, default=None):
     current = payload
@@ -15,24 +17,24 @@ def _extract_value(payload, path, default=None):
     return current
 
 
-def _get_jenga_access_token():
-    static_token = os.getenv("JENGA_API_TOKEN")
+def _get_jenga_access_token(settings_obj):
+    static_token = settings_obj.api_token.strip()
     if static_token:
         return static_token
 
-    auth_endpoint = os.getenv("JENGA_AUTH_ENDPOINT")
-    client_id = os.getenv("JENGA_CLIENT_ID")
-    client_secret = os.getenv("JENGA_CLIENT_SECRET")
+    auth_endpoint = settings_obj.auth_endpoint
+    client_id = settings_obj.client_id
+    client_secret = settings_obj.client_secret
 
     if not auth_endpoint or not client_id or not client_secret:
-        return None
+        raise ValueError("Jenga settings are incomplete. Configure API credentials first.")
 
     payload = {
-        "grant_type": os.getenv("JENGA_GRANT_TYPE", "client_credentials"),
+        "grant_type": settings_obj.grant_type or "client_credentials",
         "client_id": client_id,
         "client_secret": client_secret,
     }
-    scope = os.getenv("JENGA_SCOPE")
+    scope = settings_obj.scope
     if scope:
         payload["scope"] = scope
 
@@ -47,32 +49,22 @@ def _get_jenga_access_token():
 
 
 def fetch_jenga_equity_balance():
-    """
-    Fetches account balance via Jenga API.
-    Falls back to a configurable mock when credentials are unavailable.
-    """
-    endpoint = os.getenv("JENGA_BALANCE_ENDPOINT")
-    token = _get_jenga_access_token()
-    account_ref = os.getenv("EQUITY_ACCOUNT_REF", "equity-main")
-    http_method = os.getenv("JENGA_BALANCE_HTTP_METHOD", "POST").upper()
-    balance_path = os.getenv("JENGA_BALANCE_FIELD_PATH", "balance")
-    provider = os.getenv("JENGA_PROVIDER_NAME", "Jenga")
+    settings_obj = JengaApiSettings.objects.order_by("-updated_at", "-id").first()
+    if not settings_obj or not settings_obj.is_configured:
+        raise ValueError("Configure Jenga account settings before fetching balances.")
 
-    if not endpoint or not token:
-        mock_balance = Decimal(os.getenv("JENGA_MOCK_BALANCE", "0.00"))
-        return {
-            "ok": True,
-            "provider": provider,
-            "account_reference": account_ref,
-            "balance": mock_balance,
-            "raw": "mock response",
-        }
+    endpoint = settings_obj.balance_endpoint
+    token = _get_jenga_access_token(settings_obj)
+    account_ref = settings_obj.account_reference
+    http_method = (settings_obj.balance_http_method or JengaApiSettings.HTTP_POST).upper()
+    balance_path = settings_obj.balance_field_path or "balance"
+    provider = settings_obj.provider_name or "Jenga"
 
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
-    api_key = os.getenv("JENGA_API_KEY")
+    api_key = settings_obj.api_key
     if api_key:
         headers["X-API-Key"] = api_key
 

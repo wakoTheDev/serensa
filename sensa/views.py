@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
 
@@ -18,13 +18,14 @@ from reportlab.pdfgen import canvas
 from .forms import (
     AdminBootstrapForm,
     DailyEntryForm,
+    JengaApiSettingsForm,
     PhoneLoginForm,
     ReportFilterForm,
     ShopForm,
     UserManagementForm,
     UserRoleUpdateForm,
 )
-from .models import BankBalanceSnapshot, DailyEntry, Shop, UserProfile
+from .models import BankBalanceSnapshot, DailyEntry, JengaApiSettings, Shop, UserProfile
 from .services import fetch_jenga_equity_balance
 
 User = get_user_model()
@@ -142,6 +143,7 @@ def entry_create_or_update(request):
         return HttpResponseForbidden("Not authorized.")
 
     edit_entry = None
+    opening_stock_value = Decimal("0.00")
 
     if request.method == "POST":
         shop_id = request.POST.get("shop")
@@ -157,6 +159,8 @@ def entry_create_or_update(request):
 
             entry = form.save(commit=False)
             is_update = bool(entry.pk)
+            entry.opening_stock = _derive_opening_stock(shop, entry.entry_date, current_entry=edit_entry)
+            opening_stock_value = entry.opening_stock
 
             if entry.entry_date == today or _is_admin(user):
                 entry.submitted_by = user
@@ -171,6 +175,15 @@ def entry_create_or_update(request):
             return redirect(f"{request.path}?shop={shop.pk}")
 
         messages.error(request, "Entry was not saved. Please correct the form errors and try again.")
+        bound_shop = form.data.get("shop")
+        bound_date = form.data.get("entry_date")
+        if bound_shop and bound_date:
+            shop = Shop.objects.filter(pk=bound_shop).first()
+            try:
+                parsed_date = datetime.strptime(bound_date, "%Y-%m-%d").date()
+            except ValueError:
+                parsed_date = today
+            opening_stock_value = _derive_opening_stock(shop, parsed_date, current_entry=edit_entry)
     else:
         initial = {"entry_date": today}
 
@@ -192,12 +205,17 @@ def entry_create_or_update(request):
 
         if edit_entry:
             form = DailyEntryForm(user=user, instance=edit_entry)
+            opening_stock_value = _derive_opening_stock(edit_entry.shop, edit_entry.entry_date, current_entry=edit_entry)
         else:
             form = DailyEntryForm(user=user, initial=initial)
+            preview_shop = initial.get("shop")
+            preview_date = initial.get("entry_date", today)
+            opening_stock_value = _derive_opening_stock(preview_shop, preview_date)
 
     context = {
         "form": form,
         "is_edit_mode": bool(edit_entry),
+        "opening_stock_value": opening_stock_value,
         "form_title": "Update Shop Values" if edit_entry else "Feed Shop Values",
         "form_subtitle": (
             "Editing today's saved entry. Update the fields and submit changes."
@@ -274,9 +292,93 @@ def _date_range(period, selected_date):
     return start, end
 
 
+def _derive_opening_stock(shop, entry_date, current_entry=None):
+    if not shop or not entry_date:
+        return Decimal("0.00")
+
+    entries = DailyEntry.objects.filter(shop=shop)
+    if current_entry and current_entry.pk:
+        entries = entries.exclude(pk=current_entry.pk)
+
+    previous_day_entry = entries.filter(entry_date=entry_date - timedelta(days=1)).first()
+    if previous_day_entry:
+        return previous_day_entry.closing_stock or Decimal("0.00")
+
+    latest_previous_entry = entries.filter(entry_date__lt=entry_date).order_by("-entry_date", "-updated_at").first()
+    if latest_previous_entry:
+        return latest_previous_entry.closing_stock or Decimal("0.00")
+
+    return Decimal("0.00")
+
+
+def _calculate_stock_metrics(entries):
+    per_shop = OrderedDict()
+
+    for entry in entries:
+        state = per_shop.setdefault(
+            entry.shop_id,
+            {
+                "opening": entry.opening_stock or Decimal("0.00"),
+                "first_date": entry.entry_date,
+                "closing": entry.closing_stock or Decimal("0.00"),
+                "last_date": entry.entry_date,
+                "added": Decimal("0.00"),
+            },
+        )
+        if entry.entry_date < state["first_date"]:
+            state["first_date"] = entry.entry_date
+            state["opening"] = entry.opening_stock or Decimal("0.00")
+        if entry.entry_date > state["last_date"]:
+            state["last_date"] = entry.entry_date
+            state["closing"] = entry.closing_stock or Decimal("0.00")
+        state["added"] += entry.stock_added or Decimal("0.00")
+
+    opening_total = sum((state["opening"] for state in per_shop.values()), Decimal("0.00"))
+    added_total = sum((state["added"] for state in per_shop.values()), Decimal("0.00"))
+    closing_total = sum((state["closing"] for state in per_shop.values()), Decimal("0.00"))
+
+    return {
+        "opening_stock": opening_total,
+        "stock_added": added_total,
+        "closing_stock": closing_total,
+        "stock_consumed": opening_total + added_total - closing_total,
+    }
+
+
+def _build_balance_metrics(start, end):
+    current_tz = timezone.get_current_timezone()
+    start_marker = timezone.make_aware(datetime.combine(start, time.min), current_tz)
+    end_marker = timezone.make_aware(datetime.combine(end, time.max), current_tz)
+
+    opening_snapshot = (
+        BankBalanceSnapshot.objects.filter(fetched_at__lt=start_marker)
+        .order_by("-fetched_at")
+        .first()
+    )
+    closing_snapshot = (
+        BankBalanceSnapshot.objects.filter(fetched_at__lte=end_marker)
+        .order_by("-fetched_at")
+        .first()
+    )
+
+    opening_balance = opening_snapshot.balance if opening_snapshot else Decimal("0.00")
+    closing_balance = closing_snapshot.balance if closing_snapshot else Decimal("0.00")
+    has_delta = bool(closing_snapshot and closing_snapshot.fetched_at >= start_marker and opening_snapshot)
+
+    return {
+        "opening_snapshot": opening_snapshot,
+        "closing_snapshot": closing_snapshot,
+        "opening_balance": opening_balance,
+        "closing_balance": closing_balance,
+        "bank_received": closing_balance - opening_balance if has_delta else Decimal("0.00"),
+        "has_delta": has_delta,
+        "latest_balance": BankBalanceSnapshot.objects.order_by("-fetched_at").first(),
+    }
+
+
 def _build_report_dataset(query_data):
     form = ReportFilterForm(query_data or None)
-    entries = DailyEntry.objects.select_related("shop", "submitted_by")
+    entries_qs = DailyEntry.objects.select_related("shop", "submitted_by")
 
     today = timezone.localdate()
     if form.is_bound and form.is_valid():
@@ -296,14 +398,16 @@ def _build_report_dataset(query_data):
     else:
         period = "historical"
         selected_date = today
-        start = entries.order_by("entry_date").values_list("entry_date", flat=True).first() or today
+        start = entries_qs.order_by("entry_date").values_list("entry_date", flat=True).first() or today
         end = today
         selected_shop = None
         filter_mode = "historical"
 
-    entries = entries.filter(entry_date__range=(start, end)).order_by("entry_date", "shop__name")
+    entries_qs = entries_qs.filter(entry_date__range=(start, end)).order_by("entry_date", "shop__name")
     if selected_shop:
-        entries = entries.filter(shop=selected_shop)
+        entries_qs = entries_qs.filter(shop=selected_shop)
+
+    entries = list(entries_qs)
 
     shops_in_scope = Shop.objects.filter(active=True)
     if selected_shop:
@@ -316,36 +420,33 @@ def _build_report_dataset(query_data):
             .first()
         )
 
-    if chart_shop:
-        shop_entries = DailyEntry.objects.filter(
-            shop=chart_shop,
-            entry_date__range=(start, end),
-        ).order_by("entry_date")
-    else:
-        shop_entries = DailyEntry.objects.none()
+    shop_entries = [entry for entry in entries if chart_shop and entry.shop_id == chart_shop.id]
 
-    totals = entries.aggregate(
-        opening_stock=Sum("opening_stock"),
-        stock_added=Sum("stock_added"),
-        expenses=Sum("expenses"),
-        sales_value=Sum("sales_value"),
-        debts=Sum("debts"),
-        closing_stock=Sum("closing_stock"),
-        cash_received=Sum("cash_received"),
-    )
-
-    opening = totals["opening_stock"] or Decimal("0.00")
-    added = totals["stock_added"] or Decimal("0.00")
-    expenses = totals["expenses"] or Decimal("0.00")
-    closing = totals["closing_stock"] or Decimal("0.00")
-    total_sales = totals["sales_value"] or Decimal("0.00")
-
-    stock_consumed = opening + added - closing
-    profit_or_loss = total_sales - stock_consumed - expenses
+    stock_metrics = _calculate_stock_metrics(entries)
+    total_sales = sum((entry.sales_value or Decimal("0.00") for entry in entries), Decimal("0.00"))
+    total_expenses = sum((entry.expenses or Decimal("0.00") for entry in entries), Decimal("0.00"))
+    total_debts = sum((entry.debts or Decimal("0.00") for entry in entries), Decimal("0.00"))
+    total_cash = sum((entry.cash_received or Decimal("0.00") for entry in entries), Decimal("0.00"))
+    total_mobile_money = sum((entry.mobile_money_received for entry in entries), Decimal("0.00"))
+    paid_sales_total = total_sales - total_debts
+    stock_consumed = stock_metrics["stock_consumed"]
+    profit_or_loss = total_sales - stock_consumed - total_expenses
     net_profit = profit_or_loss if profit_or_loss > Decimal("0.00") else Decimal("0.00")
     net_loss = abs(profit_or_loss) if profit_or_loss < Decimal("0.00") else Decimal("0.00")
+    balance_metrics = _build_balance_metrics(start, end)
 
-    # Shop-specific historical trend (progressive/cumulative).
+    totals = {
+        "opening_stock": stock_metrics["opening_stock"],
+        "stock_added": stock_metrics["stock_added"],
+        "expenses": total_expenses,
+        "sales_value": total_sales,
+        "debts": total_debts,
+        "closing_stock": stock_metrics["closing_stock"],
+        "cash_received": total_cash,
+        "mobile_money": total_mobile_money,
+        "paid_sales": paid_sales_total,
+    }
+
     shop_daily_points = OrderedDict()
     cursor = start
     while cursor <= end:
@@ -353,22 +454,17 @@ def _build_report_dataset(query_data):
             "sales": Decimal("0.00"),
             "expenses": Decimal("0.00"),
             "debts": Decimal("0.00"),
+            "mobile": Decimal("0.00"),
             "profit": Decimal("0.00"),
         }
         cursor += timedelta(days=1)
 
     for entry in shop_entries:
         key = entry.entry_date.isoformat()
-        if key not in shop_daily_points:
-            shop_daily_points[key] = {
-                "sales": Decimal("0.00"),
-                "expenses": Decimal("0.00"),
-                "debts": Decimal("0.00"),
-                "profit": Decimal("0.00"),
-            }
         shop_daily_points[key]["sales"] += entry.sales_value or Decimal("0.00")
         shop_daily_points[key]["expenses"] += entry.expenses or Decimal("0.00")
         shop_daily_points[key]["debts"] += entry.debts or Decimal("0.00")
+        shop_daily_points[key]["mobile"] += entry.mobile_money_received
         shop_daily_points[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
 
     progressive_shop_sales = []
@@ -386,41 +482,28 @@ def _build_report_dataset(query_data):
         progressive_shop_expenses.append(float(running_expenses))
         progressive_shop_profit.append(float(running_profit))
 
-    shop_totals = shop_entries.aggregate(
-        sales=Sum("sales_value"),
-        expenses=Sum("expenses"),
-        debts=Sum("debts"),
-    )
-    shop_sales_total = shop_totals["sales"] or Decimal("0.00")
-    shop_expenses_total = shop_totals["expenses"] or Decimal("0.00")
-    shop_debts_total = shop_totals["debts"] or Decimal("0.00")
-    shop_profit_total = sum((entry.profit_or_loss or Decimal("0.00") for entry in shop_entries), Decimal("0.00"))
+    shop_stock_metrics = _calculate_stock_metrics(shop_entries)
+    shop_sales_total = sum((entry.sales_value or Decimal("0.00") for entry in shop_entries), Decimal("0.00"))
+    shop_expenses_total = sum((entry.expenses or Decimal("0.00") for entry in shop_entries), Decimal("0.00"))
+    shop_debts_total = sum((entry.debts or Decimal("0.00") for entry in shop_entries), Decimal("0.00"))
+    shop_cash_total = sum((entry.cash_received or Decimal("0.00") for entry in shop_entries), Decimal("0.00"))
+    shop_mobile_total = sum((entry.mobile_money_received for entry in shop_entries), Decimal("0.00"))
+    shop_profit_total = shop_sales_total - shop_stock_metrics["stock_consumed"] - shop_expenses_total
     shop_net_profit = shop_profit_total if shop_profit_total > Decimal("0.00") else Decimal("0.00")
     shop_net_loss = abs(shop_profit_total) if shop_profit_total < Decimal("0.00") else Decimal("0.00")
 
-    # Shop-specific same-day bar snapshot.
     bar_date = selected_date if filter_mode == "period" else end
     if filter_mode == "historical":
         bar_date = today
 
-    shop_day_entries = DailyEntry.objects.none()
-    if chart_shop:
-        shop_day_entries = DailyEntry.objects.filter(shop=chart_shop, entry_date=bar_date)
+    shop_day_entries = [entry for entry in shop_entries if entry.entry_date == bar_date]
+    day_sales = sum((entry.sales_value or Decimal("0.00") for entry in shop_day_entries), Decimal("0.00"))
+    day_expenses = sum((entry.expenses or Decimal("0.00") for entry in shop_day_entries), Decimal("0.00"))
+    day_debts = sum((entry.debts or Decimal("0.00") for entry in shop_day_entries), Decimal("0.00"))
+    day_cash = sum((entry.cash_received or Decimal("0.00") for entry in shop_day_entries), Decimal("0.00"))
+    day_mobile = sum((entry.mobile_money_received for entry in shop_day_entries), Decimal("0.00"))
+    day_profit = sum((entry.profit_or_loss or Decimal("0.00") for entry in shop_day_entries), Decimal("0.00"))
 
-    day_sales = Decimal("0.00")
-    day_expenses = Decimal("0.00")
-    day_debts = Decimal("0.00")
-    day_cash = Decimal("0.00")
-    day_profit = Decimal("0.00")
-
-    for entry in shop_day_entries:
-        day_sales += entry.sales_value or Decimal("0.00")
-        day_expenses += entry.expenses or Decimal("0.00")
-        day_debts += entry.debts or Decimal("0.00")
-        day_cash += entry.cash_received or Decimal("0.00")
-        day_profit += entry.profit_or_loss or Decimal("0.00")
-
-    # All-shops cumulative trend across selected range.
     all_daily_points = OrderedDict()
     cursor = start
     while cursor <= end:
@@ -458,10 +541,9 @@ def _build_report_dataset(query_data):
         cumulative_debts.append(float(running_debts_all))
         cumulative_profit.append(float(running_profit_all))
 
-    # Per-shop comparison across selected range.
     shop_compare = OrderedDict()
-    shop_daily_data = OrderedDict()  # For per-shop trend charts
-    
+    shop_daily_data = OrderedDict()
+
     for entry in entries:
         shop_key = entry.shop.name
         if shop_key not in shop_compare:
@@ -469,6 +551,7 @@ def _build_report_dataset(query_data):
                 "sales": Decimal("0.00"),
                 "expenses": Decimal("0.00"),
                 "debts": Decimal("0.00"),
+                "mobile": Decimal("0.00"),
                 "profit": Decimal("0.00"),
             }
             shop_daily_data[shop_key] = OrderedDict()
@@ -480,19 +563,14 @@ def _build_report_dataset(query_data):
                     "profit": Decimal("0.00"),
                 }
                 cursor += timedelta(days=1)
-        
+
         shop_compare[shop_key]["sales"] += entry.sales_value or Decimal("0.00")
         shop_compare[shop_key]["expenses"] += entry.expenses or Decimal("0.00")
         shop_compare[shop_key]["debts"] += entry.debts or Decimal("0.00")
+        shop_compare[shop_key]["mobile"] += entry.mobile_money_received
         shop_compare[shop_key]["profit"] += entry.profit_or_loss or Decimal("0.00")
-        
+
         entry_key = entry.entry_date.isoformat()
-        if entry_key not in shop_daily_data[shop_key]:
-            shop_daily_data[shop_key][entry_key] = {
-                "sales": Decimal("0.00"),
-                "expenses": Decimal("0.00"),
-                "profit": Decimal("0.00"),
-            }
         shop_daily_data[shop_key][entry_key]["sales"] += entry.sales_value or Decimal("0.00")
         shop_daily_data[shop_key][entry_key]["expenses"] += entry.expenses or Decimal("0.00")
         shop_daily_data[shop_key][entry_key]["profit"] += entry.profit_or_loss or Decimal("0.00")
@@ -500,23 +578,26 @@ def _build_report_dataset(query_data):
     chart_payload = {
         "shopName": chart_shop.name if chart_shop else "No Shop",
         "shopBarDate": str(bar_date),
-        "shopBarLabels": ["Sales", "Expenses", "Debts", "Cash", "Profit/Loss"],
+        "shopBarLabels": ["Sales", "Expenses", "Credit", "Cash", "Mobile", "Profit/Loss"],
         "shopBarValues": [
             float(day_sales),
             float(day_expenses),
             float(day_debts),
             float(day_cash),
+            float(day_mobile),
             float(day_profit),
         ],
         "trendLabels": list(shop_daily_points.keys()),
         "trendSales": progressive_shop_sales,
         "trendExpenses": progressive_shop_expenses,
         "trendProfit": progressive_shop_profit,
-        "shopPieLabels": ["Sales", "Expenses", "Debts", "Net Profit", "Net Loss"],
+        "shopPieLabels": ["Sales", "Expenses", "Credit", "Cash", "Mobile", "Net Profit", "Net Loss"],
         "shopPieValues": [
             float(shop_sales_total),
             float(shop_expenses_total),
             float(shop_debts_total),
+            float(shop_cash_total),
+            float(shop_mobile_total),
             float(shop_net_profit),
             float(shop_net_loss),
         ],
@@ -529,12 +610,15 @@ def _build_report_dataset(query_data):
         "shopCompareSales": [float(v["sales"]) for v in shop_compare.values()],
         "shopCompareExpenses": [float(v["expenses"]) for v in shop_compare.values()],
         "shopCompareDebts": [float(v["debts"]) for v in shop_compare.values()],
+        "shopCompareMobile": [float(v["mobile"]) for v in shop_compare.values()],
         "shopCompareProfit": [float(v["profit"]) for v in shop_compare.values()],
-        "generalPieLabels": ["Sales", "Expenses", "Debts", "Net Profit", "Net Loss"],
+        "generalPieLabels": ["Sales", "Expenses", "Credit", "Cash", "Mobile", "Net Profit", "Net Loss"],
         "generalPieValues": [
             float(total_sales),
-            float(expenses),
-            float(totals["debts"] or Decimal("0.00")),
+            float(total_expenses),
+            float(total_debts),
+            float(total_cash),
+            float(total_mobile_money),
             float(net_profit),
             float(net_loss),
         ],
@@ -558,6 +642,7 @@ def _build_report_dataset(query_data):
                             "rgba(180, 83, 9, 0.75)",
                             "rgba(190, 24, 93, 0.75)",
                             "rgba(30, 64, 175, 0.75)",
+                            "rgba(124, 58, 237, 0.75)",
                             "rgba(22, 101, 52, 0.75)",
                         ],
                         "borderRadius": 8,
@@ -618,6 +703,8 @@ def _build_report_dataset(query_data):
                             "rgba(180, 83, 9, 0.8)",
                             "rgba(190, 24, 93, 0.8)",
                             "rgba(29, 78, 216, 0.8)",
+                            "rgba(124, 58, 237, 0.8)",
+                            "rgba(22, 163, 74, 0.8)",
                             "rgba(127, 29, 29, 0.8)",
                         ],
                     }
@@ -642,7 +729,7 @@ def _build_report_dataset(query_data):
                         "fill": True,
                     },
                     {
-                        "label": "Cumulative Debts",
+                        "label": "Cumulative Credit",
                         "data": chart_payload["allCumulativeDebts"],
                         "borderColor": "#be123c",
                         "backgroundColor": "rgba(190, 18, 60, 0.08)",
@@ -675,9 +762,14 @@ def _build_report_dataset(query_data):
                         "backgroundColor": "rgba(15, 118, 110, 0.75)",
                     },
                     {
-                        "label": "Debts",
+                        "label": "Credit Sales",
                         "data": chart_payload["shopCompareDebts"],
                         "backgroundColor": "rgba(190, 24, 93, 0.75)",
+                    },
+                    {
+                        "label": "Mobile Money",
+                        "data": chart_payload["shopCompareMobile"],
+                        "backgroundColor": "rgba(124, 58, 237, 0.75)",
                     },
                     {
                         "label": "Profit/Loss",
@@ -757,6 +849,8 @@ def _build_report_dataset(query_data):
                             "rgba(180, 83, 9, 0.8)",
                             "rgba(190, 24, 93, 0.8)",
                             "rgba(29, 78, 216, 0.8)",
+                            "rgba(124, 58, 237, 0.8)",
+                            "rgba(22, 163, 74, 0.8)",
                             "rgba(127, 29, 29, 0.8)",
                         ],
                     }
@@ -779,6 +873,13 @@ def _build_report_dataset(query_data):
         "totals": totals,
         "stock_consumed": stock_consumed,
         "total_sales": total_sales,
+        "paid_sales_total": paid_sales_total,
+        "mobile_money_total": total_mobile_money,
+        "bank_opening_balance": balance_metrics["opening_balance"],
+        "bank_closing_balance": balance_metrics["closing_balance"],
+        "bank_received": balance_metrics["bank_received"],
+        "bank_has_delta": balance_metrics["has_delta"],
+        "balance": balance_metrics["closing_snapshot"] or balance_metrics["latest_balance"],
         "profit_or_loss": profit_or_loss,
         "chart_payload": chart_payload,
         "chart_cards_count": len(chart_cards),
@@ -789,9 +890,31 @@ def _build_report_dataset(query_data):
 @user_passes_test(_is_admin)
 def report_view(request):
     dataset = _build_report_dataset(request.GET)
-    balance = BankBalanceSnapshot.objects.first()
-    context = {**dataset, "balance": balance}
-    return render(request, "sensa/report_view.html", context)
+    return render(request, "sensa/report_view.html", dataset)
+
+
+@login_required
+@user_passes_test(_is_admin)
+def jenga_settings_view(request):
+    settings_obj = JengaApiSettings.objects.order_by("-updated_at", "-id").first()
+
+    if request.method == "POST":
+        form = JengaApiSettingsForm(request.POST, instance=settings_obj)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Jenga account settings saved.")
+            return redirect("jenga_settings")
+    else:
+        form = JengaApiSettingsForm(instance=settings_obj)
+
+    return render(
+        request,
+        "sensa/jenga_settings.html",
+        {
+            "form": form,
+            "settings_obj": settings_obj,
+        },
+    )
 
 
 @login_required
@@ -808,8 +931,15 @@ def export_report_excel(request):
     sheet.append(["Period", f"{dataset['start']} to {dataset['end']}"])
     sheet.append([])
     sheet.append(["Total Sales", float(dataset["total_sales"])])
+    sheet.append(["Paid Sales", float(dataset["paid_sales_total"])])
+    sheet.append(["Cash Received", float(dataset["totals"]["cash_received"])])
+    sheet.append(["Mobile Money", float(dataset["mobile_money_total"])])
+    sheet.append(["Credit Sales", float(dataset["totals"]["debts"])])
     sheet.append(["Stock Consumed", float(dataset["stock_consumed"])])
     sheet.append(["Expenses", float(dataset["totals"]["expenses"] or Decimal("0.00"))])
+    sheet.append(["Bank Opening Balance", float(dataset["bank_opening_balance"])])
+    sheet.append(["Bank Closing Balance", float(dataset["bank_closing_balance"])])
+    sheet.append(["Bank Received", float(dataset["bank_received"])])
     sheet.append(["Profit/Loss", float(dataset["profit_or_loss"])])
     sheet.append([])
     sheet.append([
@@ -819,9 +949,10 @@ def export_report_excel(request):
         "Added",
         "Expenses",
         "Sales",
-        "Debts",
+        "Credit",
         "Closing",
         "Cash",
+        "Mobile",
         "P/L",
     ])
 
@@ -837,6 +968,7 @@ def export_report_excel(request):
                 float(entry.debts),
                 float(entry.closing_stock),
                 float(entry.cash_received),
+                float(entry.mobile_money_received),
                 float(entry.profit_or_loss),
             ]
         )
@@ -874,24 +1006,33 @@ def export_report_pdf(request):
     y -= 18
     pdf.drawString(40, y, f"Total Sales: {dataset['total_sales']}")
     y -= 14
+    pdf.drawString(40, y, f"Paid Sales: {dataset['paid_sales_total']}")
+    y -= 14
+    pdf.drawString(40, y, f"Cash Received: {dataset['totals']['cash_received']}")
+    y -= 14
+    pdf.drawString(40, y, f"Mobile Money: {dataset['mobile_money_total']}")
+    y -= 14
     pdf.drawString(40, y, f"Stock Consumed: {dataset['stock_consumed']}")
     y -= 14
     pdf.drawString(40, y, f"Expenses: {dataset['totals']['expenses'] or Decimal('0.00')}")
+    y -= 14
+    pdf.drawString(40, y, f"Bank Received: {dataset['bank_received']}")
     y -= 14
     pdf.drawString(40, y, f"Profit/Loss: {dataset['profit_or_loss']}")
     y -= 24
 
     pdf.setFont("Helvetica-Bold", 9)
     pdf.drawString(40, y, "Date")
-    pdf.drawString(100, y, "Shop")
-    pdf.drawString(205, y, "Open")
-    pdf.drawString(250, y, "Added")
-    pdf.drawString(300, y, "Exp")
-    pdf.drawString(340, y, "Sales")
-    pdf.drawString(390, y, "Debt")
-    pdf.drawString(435, y, "Close")
-    pdf.drawString(480, y, "Cash")
-    pdf.drawString(525, y, "P/L")
+    pdf.drawString(92, y, "Shop")
+    pdf.drawString(176, y, "Open")
+    pdf.drawString(222, y, "Added")
+    pdf.drawString(270, y, "Exp")
+    pdf.drawString(316, y, "Sales")
+    pdf.drawString(365, y, "Credit")
+    pdf.drawString(414, y, "Close")
+    pdf.drawString(458, y, "Cash")
+    pdf.drawString(502, y, "Mobile")
+    pdf.drawString(555, y, "P/L")
     y -= 14
 
     pdf.setFont("Helvetica", 8)
@@ -901,28 +1042,30 @@ def export_report_pdf(request):
             y = height - 40
             pdf.setFont("Helvetica-Bold", 9)
             pdf.drawString(40, y, "Date")
-            pdf.drawString(100, y, "Shop")
-            pdf.drawString(205, y, "Open")
-            pdf.drawString(250, y, "Added")
-            pdf.drawString(300, y, "Exp")
-            pdf.drawString(340, y, "Sales")
-            pdf.drawString(390, y, "Debt")
-            pdf.drawString(435, y, "Close")
-            pdf.drawString(480, y, "Cash")
-            pdf.drawString(525, y, "P/L")
+            pdf.drawString(92, y, "Shop")
+            pdf.drawString(176, y, "Open")
+            pdf.drawString(222, y, "Added")
+            pdf.drawString(270, y, "Exp")
+            pdf.drawString(316, y, "Sales")
+            pdf.drawString(365, y, "Credit")
+            pdf.drawString(414, y, "Close")
+            pdf.drawString(458, y, "Cash")
+            pdf.drawString(502, y, "Mobile")
+            pdf.drawString(555, y, "P/L")
             y -= 14
             pdf.setFont("Helvetica", 8)
 
         pdf.drawString(40, y, str(entry.entry_date))
-        pdf.drawString(100, y, entry.shop.name[:18])
-        pdf.drawRightString(245, y, f"{entry.opening_stock}")
-        pdf.drawRightString(292, y, f"{entry.stock_added}")
-        pdf.drawRightString(340, y, f"{entry.expenses}")
-        pdf.drawRightString(388, y, f"{entry.sales_value}")
-        pdf.drawRightString(433, y, f"{entry.debts}")
-        pdf.drawRightString(478, y, f"{entry.closing_stock}")
-        pdf.drawRightString(523, y, f"{entry.cash_received}")
-        pdf.drawRightString(570, y, f"{entry.profit_or_loss}")
+        pdf.drawString(92, y, entry.shop.name[:14])
+        pdf.drawRightString(214, y, f"{entry.opening_stock}")
+        pdf.drawRightString(260, y, f"{entry.stock_added}")
+        pdf.drawRightString(306, y, f"{entry.expenses}")
+        pdf.drawRightString(355, y, f"{entry.sales_value}")
+        pdf.drawRightString(404, y, f"{entry.debts}")
+        pdf.drawRightString(449, y, f"{entry.closing_stock}")
+        pdf.drawRightString(496, y, f"{entry.cash_received}")
+        pdf.drawRightString(548, y, f"{entry.mobile_money_received}")
+        pdf.drawRightString(602, y, f"{entry.profit_or_loss}")
         y -= 12
 
     pdf.save()

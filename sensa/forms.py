@@ -4,7 +4,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.core.validators import RegexValidator
 from django.utils import timezone
 
-from .models import DailyEntry, Shop, UserProfile
+from .models import DailyEntry, JengaApiSettings, Shop, UserProfile
 
 User = get_user_model()
 
@@ -21,7 +21,6 @@ class DailyEntryForm(forms.ModelForm):
         fields = [
             "shop",
             "entry_date",
-            "opening_stock",
             "stock_added",
             "expenses",
             "sales_value",
@@ -47,6 +46,68 @@ class DailyEntryForm(forms.ModelForm):
 
         if user and hasattr(user, "profile") and not user.profile.is_admin:
             self.fields["shop"].queryset = user.profile.assigned_shops.filter(active=True)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        sales_value = cleaned_data.get("sales_value") or 0
+        debts = cleaned_data.get("debts") or 0
+        cash_received = cleaned_data.get("cash_received") or 0
+
+        if debts > sales_value:
+            self.add_error("debts", "Credit sales cannot be greater than total sales.")
+
+        if cash_received + debts > sales_value:
+            self.add_error(
+                "cash_received",
+                "Cash plus credit sales cannot be greater than total sales.",
+            )
+
+        return cleaned_data
+
+
+class JengaApiSettingsForm(forms.ModelForm):
+    class Meta:
+        model = JengaApiSettings
+        fields = [
+            "provider_name",
+            "account_reference",
+            "balance_endpoint",
+            "balance_http_method",
+            "balance_field_path",
+            "api_token",
+            "auth_endpoint",
+            "client_id",
+            "client_secret",
+            "api_key",
+            "grant_type",
+            "scope",
+        ]
+        widgets = {
+            "api_token": forms.PasswordInput(render_value=True),
+            "client_secret": forms.PasswordInput(render_value=True),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        api_token = (cleaned_data.get("api_token") or "").strip()
+        auth_endpoint = (cleaned_data.get("auth_endpoint") or "").strip()
+        client_id = (cleaned_data.get("client_id") or "").strip()
+        client_secret = (cleaned_data.get("client_secret") or "").strip()
+        balance_endpoint = (cleaned_data.get("balance_endpoint") or "").strip()
+        account_reference = (cleaned_data.get("account_reference") or "").strip()
+
+        if not account_reference:
+            self.add_error("account_reference", "Receiving account reference is required.")
+
+        if not balance_endpoint:
+            self.add_error("balance_endpoint", "Balance endpoint is required.")
+
+        if not api_token and not (auth_endpoint and client_id and client_secret):
+            raise forms.ValidationError(
+                "Provide either a static API token or the auth endpoint, client ID, and client secret."
+            )
+
+        return cleaned_data
 
 
 class ReportFilterForm(forms.Form):

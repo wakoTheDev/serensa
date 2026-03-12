@@ -25,6 +25,7 @@
             <a href="{% url 'shop_list'%}">Shops</a>
             <a href="{% url 'report_view' %}">Reports</a>
             <a href="{% url 'user_list' %}">Users</a>
+            <a href="{% url 'jenga_settings' %}">Settings</a>
             {% endif %}
             <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}
