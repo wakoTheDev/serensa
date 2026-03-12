@@ -20,6 +20,9 @@
         </p>
     <form method="post" class="entry-form-grid">
         {% csrf_token %}
+        {% if next_url %}
+        <input type="hidden" name="next" value="{{ next_url }}">
+        {% endif %}
         {{ form.as_p }}
                 <button class="btn" type="submit">{{ submit_label }}</button>
     </form>

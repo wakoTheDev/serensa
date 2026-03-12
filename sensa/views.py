@@ -287,6 +287,80 @@ def entry_create_or_update(request):
 
 @login_required
 @user_passes_test(_is_admin)
+def entry_admin_edit(request, entry_id):
+    entry = get_object_or_404(DailyEntry, pk=entry_id)
+    previous_closing = _get_previous_closing_stock(entry.shop, entry.entry_date, current_entry=entry)
+    manual_opening_required = previous_closing is None
+    opening_stock_value = previous_closing if previous_closing is not None else entry.opening_stock
+
+    if request.method == "POST":
+        form = DailyEntryForm(
+            request.POST,
+            user=request.user,
+            instance=entry,
+            require_opening_stock=manual_opening_required,
+            calculated_opening_stock=opening_stock_value,
+        )
+        if form.is_valid():
+            updated = form.save(commit=False)
+            previous_closing = _get_previous_closing_stock(
+                updated.shop,
+                updated.entry_date,
+                current_entry=entry,
+            )
+            if previous_closing is None:
+                updated.opening_stock = form.cleaned_data["opening_stock"]
+            else:
+                updated.opening_stock = previous_closing
+            updated.submitted_by = request.user
+            updated.save()
+            messages.success(request, "Entry updated successfully.")
+            next_url = request.POST.get("next") or request.GET.get("next")
+            return redirect(next_url or "report_view")
+    else:
+        form = DailyEntryForm(
+            user=request.user,
+            instance=entry,
+            require_opening_stock=manual_opening_required,
+            calculated_opening_stock=opening_stock_value,
+        )
+
+    context = {
+        "form": form,
+        "is_edit_mode": True,
+        "opening_stock_value": opening_stock_value,
+        "manual_opening_required": manual_opening_required,
+        "form_title": "Admin Update Entry",
+        "form_subtitle": "Edit an existing submitted entry.",
+        "submit_label": "Update Entry",
+        "next_url": request.GET.get("next") or request.POST.get("next") or "",
+    }
+    return render(request, "sensa/entry_form.html", context)
+
+
+@login_required
+@user_passes_test(_is_admin)
+def entry_admin_delete(request, entry_id):
+    entry = get_object_or_404(DailyEntry, pk=entry_id)
+    if request.method == "POST":
+        entry.delete()
+        messages.success(request, "Entry deleted.")
+        next_url = request.POST.get("next") or request.GET.get("next")
+        return redirect(next_url or "report_view")
+
+    return render(
+        request,
+        "sensa/confirm_delete.html",
+        {
+            "item": entry,
+            "kind": "entry",
+            "next_url": request.GET.get("next") or "",
+        },
+    )
+
+
+@login_required
+@user_passes_test(_is_admin)
 def shop_list(request):
     shops = Shop.objects.all().order_by("name")
     return render(request, "sensa/shop_list.html", {"shops": shops})

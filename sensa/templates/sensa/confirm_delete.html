@@ -6,6 +6,9 @@
     <p>Are you sure you want to remove this {{ kind }}: <strong>{{ item }}</strong>?</p>
     <form method="post">
         {% csrf_token %}
+        {% if next_url %}
+        <input type="hidden" name="next" value="{{ next_url }}">
+        {% endif %}
         <button class="btn danger" type="submit">Confirm</button>
     </form>
 </section>

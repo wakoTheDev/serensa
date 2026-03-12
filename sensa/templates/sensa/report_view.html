@@ -107,7 +107,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>Date</th><th>Shop</th><th>Open</th><th>Added</th><th>Expenses</th><th>Sales</th><th>Credit</th><th>Closing</th><th>Cash</th><th>Mobile</th><th>P/L</th>
+                    <th>Date</th><th>Shop</th><th>Open</th><th>Added</th><th>Expenses</th><th>Sales</th><th>Credit</th><th>Closing</th><th>Cash</th><th>Mobile</th><th>P/L</th><th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -124,9 +124,13 @@
                     <td>{{ entry.cash_received }}</td>
                     <td>{{ entry.mobile_money_received }}</td>
                     <td>{{ entry.profit_or_loss }}</td>
+                    <td>
+                        <a class="btn btn-alt" href="{% url 'entry_admin_edit' entry.id %}?next={{ request.get_full_path|urlencode }}">Edit</a>
+                        <a class="btn danger" href="{% url 'entry_admin_delete' entry.id %}?next={{ request.get_full_path|urlencode }}">Delete</a>
+                    </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="11">No records in selected period.</td></tr>
+                <tr><td colspan="12">No records in selected period.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
