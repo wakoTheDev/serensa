@@ -131,44 +131,22 @@ class DailyEntryForm(forms.ModelForm):
 class JengaApiSettingsForm(forms.ModelForm):
     class Meta:
         model = JengaApiSettings
-        fields = [
-            "provider_name",
-            "account_reference",
-            "balance_endpoint",
-            "balance_http_method",
-            "balance_field_path",
-            "api_token",
-            "auth_endpoint",
-            "client_id",
-            "client_secret",
-            "api_key",
-            "grant_type",
-            "scope",
-        ]
-        widgets = {
-            "api_token": forms.PasswordInput(render_value=True),
-            "client_secret": forms.PasswordInput(render_value=True),
+        fields = ["account_reference"]
+        labels = {
+            "account_reference": "Receiving Account Number / Reference",
+        }
+        help_texts = {
+            "account_reference": "Enter the bank account or till reference where funds are received.",
         }
 
     def clean(self):
         cleaned_data = super().clean()
-        api_token = (cleaned_data.get("api_token") or "").strip()
-        auth_endpoint = (cleaned_data.get("auth_endpoint") or "").strip()
-        client_id = (cleaned_data.get("client_id") or "").strip()
-        client_secret = (cleaned_data.get("client_secret") or "").strip()
-        balance_endpoint = (cleaned_data.get("balance_endpoint") or "").strip()
         account_reference = (cleaned_data.get("account_reference") or "").strip()
 
         if not account_reference:
             self.add_error("account_reference", "Receiving account reference is required.")
 
-        if not balance_endpoint:
-            self.add_error("balance_endpoint", "Balance endpoint is required.")
-
-        if not api_token and not (auth_endpoint and client_id and client_secret):
-            raise forms.ValidationError(
-                "Provide either a static API token or the auth endpoint, client ID, and client secret."
-            )
+        cleaned_data["account_reference"] = account_reference
 
         return cleaned_data
 

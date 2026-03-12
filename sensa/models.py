@@ -161,10 +161,7 @@ class JengaApiSettings(models.Model):
 
     @property
     def is_configured(self):
-        has_auth_flow = bool(
-            self.auth_endpoint and self.client_id and self.client_secret and self.balance_endpoint
-        )
-        return bool(self.balance_endpoint and self.account_reference and (self.api_token or has_auth_flow))
+        return bool(self.account_reference)
 
 
 class BankBalanceSnapshot(models.Model):
