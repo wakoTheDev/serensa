@@ -1038,15 +1038,15 @@ def export_report_excel(request):
             [
                 str(entry.entry_date),
                 entry.shop.name,
-                float(entry.opening_stock),
-                float(entry.stock_added),
-                float(entry.expenses),
-                float(entry.sales_value),
-                float(entry.debts),
-                float(entry.closing_stock),
-                float(entry.cash_received),
-                float(entry.mobile_money_received),
-                float(entry.profit_or_loss),
+                float(entry.opening_stock or Decimal("0.00")),
+                float(entry.stock_added or Decimal("0.00")),
+                float(entry.expenses or Decimal("0.00")),
+                float(entry.sales_value or Decimal("0.00")),
+                float(entry.debts or Decimal("0.00")),
+                float(entry.closing_stock or Decimal("0.00")),
+                float(entry.cash_received or Decimal("0.00")),
+                float(entry.mobile_money_received or Decimal("0.00")),
+                float(entry.profit_or_loss or Decimal("0.00")),
             ]
         )
 
