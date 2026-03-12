@@ -13,27 +13,59 @@
     new Chart(chartEl, {
       type: "bar",
       data: {
-        labels: data.summaryLabels || data.labels || [],
+        labels: data.barLabels || data.trendLabels || [],
         datasets: [
           {
-            label: "Amount",
-            data: data.summaryValues || data.values || [],
-            borderRadius: 10,
-            backgroundColor: ["#0f766e", "#b45309", "#be123c", "#1d4ed8"],
+            label: "Progressive Sales",
+            data: data.barSales || [],
+            borderRadius: 8,
+            backgroundColor: "rgba(15, 118, 110, 0.75)",
+          },
+          {
+            label: "Progressive Expenses",
+            data: data.barExpenses || [],
+            borderRadius: 8,
+            backgroundColor: "rgba(180, 83, 9, 0.75)",
+          },
+          {
+            label: "Progressive Profit/Loss",
+            data: data.barProfit || [],
+            borderRadius: 8,
+            backgroundColor: "rgba(29, 78, 216, 0.75)",
           },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: {
+          mode: "index",
+          intersect: false,
+        },
         plugins: {
           legend: {
-            display: false,
+            display: true,
+          },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                const val = ctx.parsed.y;
+                return ` ${ctx.dataset.label}: ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              },
+            },
           },
         },
         scales: {
+          x: {
+            grid: { display: false },
+          },
           y: {
             beginAtZero: true,
+            ticks: {
+              callback: function (val) {
+                return val.toLocaleString();
+              },
+            },
           },
         },
       },
@@ -50,39 +82,80 @@
             label: "Sales",
             data: data.trendSales || [],
             borderColor: "#0f766e",
-            backgroundColor: "rgba(15, 118, 110, 0.2)",
-            tension: 0.35,
-            fill: false,
+            backgroundColor: "rgba(15, 118, 110, 0.08)",
+            tension: 0.45,
+            fill: true,
+            pointRadius: 4,
+            pointHoverRadius: 7,
+            pointBackgroundColor: "#0f766e",
+            pointHoverBackgroundColor: "#fff",
+            pointHoverBorderColor: "#0f766e",
+            pointHoverBorderWidth: 2,
           },
           {
             label: "Expenses",
             data: data.trendExpenses || [],
             borderColor: "#b45309",
-            backgroundColor: "rgba(180, 83, 9, 0.2)",
-            tension: 0.35,
-            fill: false,
+            backgroundColor: "rgba(180, 83, 9, 0.08)",
+            tension: 0.45,
+            fill: true,
+            pointRadius: 4,
+            pointHoverRadius: 7,
+            pointBackgroundColor: "#b45309",
+            pointHoverBackgroundColor: "#fff",
+            pointHoverBorderColor: "#b45309",
+            pointHoverBorderWidth: 2,
           },
           {
             label: "Profit/Loss",
             data: data.trendProfit || [],
             borderColor: "#1d4ed8",
-            backgroundColor: "rgba(29, 78, 216, 0.2)",
-            tension: 0.35,
-            fill: false,
+            backgroundColor: "rgba(29, 78, 216, 0.08)",
+            tension: 0.45,
+            fill: true,
+            pointRadius: 4,
+            pointHoverRadius: 7,
+            pointBackgroundColor: "#1d4ed8",
+            pointHoverBackgroundColor: "#fff",
+            pointHoverBorderColor: "#1d4ed8",
+            pointHoverBorderWidth: 2,
           },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: {
+          mode: "index",
+          intersect: false,
+        },
         plugins: {
           legend: {
             display: true,
           },
+          tooltip: {
+            enabled: true,
+            mode: "index",
+            intersect: false,
+            callbacks: {
+              label: function (ctx) {
+                const val = ctx.parsed.y;
+                return ` ${ctx.dataset.label}: ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              },
+            },
+          },
         },
         scales: {
+          x: {
+            grid: { display: false },
+          },
           y: {
             beginAtZero: true,
+            ticks: {
+              callback: function (val) {
+                return val.toLocaleString();
+              },
+            },
           },
         },
       },

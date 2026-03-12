@@ -278,16 +278,25 @@ def _build_report_dataset(query_data):
     form = ReportFilterForm(query_data or None)
     entries = DailyEntry.objects.select_related("shop", "submitted_by")
 
+    today = timezone.localdate()
     if form.is_valid():
-        period = form.cleaned_data["period"]
+        period = form.cleaned_data.get("period") or "daily"
+        selected_date = form.cleaned_data.get("date") or today
+        start_date = form.cleaned_data.get("start_date")
+        end_date = form.cleaned_data.get("end_date")
+
+        if start_date or end_date:
+            start = start_date or end_date
+            end = end_date or start_date
+        else:
+            start, end = _date_range(period, selected_date)
         selected_shop = form.cleaned_data.get("shop")
-        selected_date = form.cleaned_data.get("date")
     else:
         period = "daily"
+        selected_date = today
+        start = end = today
         selected_shop = None
-        selected_date = timezone.localdate()
 
-    start, end = _date_range(period, selected_date)
     entries = entries.filter(entry_date__range=(start, end))
     if selected_shop:
         entries = entries.filter(shop=selected_shop)
@@ -311,26 +320,52 @@ def _build_report_dataset(query_data):
     stock_consumed = opening + added - closing
     profit_or_loss = total_sales - stock_consumed - expenses
 
-    trend_points = OrderedDict()
+    daily_points = OrderedDict()
+    cursor = start
+    while cursor <= end:
+        daily_points[cursor.isoformat()] = {
+            "sales": Decimal("0.00"),
+            "expenses": Decimal("0.00"),
+            "profit": Decimal("0.00"),
+        }
+        cursor += timedelta(days=1)
+
     for entry in entries.order_by("entry_date"):
         key = entry.entry_date.isoformat()
-        if key not in trend_points:
-            trend_points[key] = {
+        if key not in daily_points:
+            daily_points[key] = {
                 "sales": Decimal("0.00"),
                 "expenses": Decimal("0.00"),
                 "profit": Decimal("0.00"),
             }
-        trend_points[key]["sales"] += entry.sales_value or Decimal("0.00")
-        trend_points[key]["expenses"] += entry.expenses or Decimal("0.00")
-        trend_points[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
+        daily_points[key]["sales"] += entry.sales_value or Decimal("0.00")
+        daily_points[key]["expenses"] += entry.expenses or Decimal("0.00")
+        daily_points[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
+
+    progressive_sales = []
+    progressive_expenses = []
+    progressive_profit = []
+    running_sales = Decimal("0.00")
+    running_expenses = Decimal("0.00")
+    running_profit = Decimal("0.00")
+
+    for point in daily_points.values():
+        running_sales += point["sales"]
+        running_expenses += point["expenses"]
+        running_profit += point["profit"]
+        progressive_sales.append(float(running_sales))
+        progressive_expenses.append(float(running_expenses))
+        progressive_profit.append(float(running_profit))
 
     chart_payload = {
-        "summaryLabels": ["Sales", "Stock Consumed", "Expenses", "Profit/Loss"],
-        "summaryValues": [float(total_sales), float(stock_consumed), float(expenses), float(profit_or_loss)],
-        "trendLabels": list(trend_points.keys()),
-        "trendSales": [float(point["sales"]) for point in trend_points.values()],
-        "trendExpenses": [float(point["expenses"]) for point in trend_points.values()],
-        "trendProfit": [float(point["profit"]) for point in trend_points.values()],
+        "barLabels": list(daily_points.keys()),
+        "barSales": progressive_sales,
+        "barExpenses": progressive_expenses,
+        "barProfit": progressive_profit,
+        "trendLabels": list(daily_points.keys()),
+        "trendSales": progressive_sales,
+        "trendExpenses": progressive_expenses,
+        "trendProfit": progressive_profit,
     }
 
     return {
@@ -338,6 +373,8 @@ def _build_report_dataset(query_data):
         "entries": entries,
         "start": start,
         "end": end,
+        "period": period,
+        "selected_date": selected_date,
         "totals": totals,
         "stock_consumed": stock_consumed,
         "total_sales": total_sales,

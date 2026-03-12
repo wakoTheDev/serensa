@@ -50,11 +50,42 @@ class DailyEntryForm(forms.ModelForm):
 
 
 class ReportFilterForm(forms.Form):
-    PERIOD_CHOICES = [("daily", "Daily"), ("weekly", "Weekly"), ("monthly", "Monthly")]
+    PERIOD_CHOICES = [
+        ("daily", "Daily"),
+        ("weekly", "Weekly"),
+        ("monthly", "Monthly"),
+    ]
 
-    period = forms.ChoiceField(choices=PERIOD_CHOICES, initial="daily")
+    period = forms.ChoiceField(choices=PERIOD_CHOICES, initial="daily", required=False)
+    date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}),
+        required=False,
+        label="Anchor Date",
+    )
+    start_date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}),
+        required=False,
+        label="Start Date",
+    )
+    end_date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}),
+        required=False,
+        label="End Date",
+    )
     shop = forms.ModelChoiceField(queryset=Shop.objects.filter(active=True), required=False)
-    date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}), required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self.fields["date"].initial = timezone.localdate()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start = cleaned_data.get("start_date")
+        end = cleaned_data.get("end_date")
+        if start and end and end < start:
+            self.add_error("end_date", "End date must be on or after start date.")
+        return cleaned_data
 
 
 class UserManagementForm(forms.ModelForm):
