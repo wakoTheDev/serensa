@@ -3,11 +3,12 @@
 {% block content %}
 <section class="panel auth-panel">
     <h2>Settings</h2>
-    <p>Set the receiving account used for incoming bank and till payments.</p>
+    <p>Bank account number</p>
+    <!-- <p>Set the receiving account used for incoming bank and till payments.</p> -->
     {% if settings_obj %}
     <p class="muted">Current account: {{ settings_obj.account_reference }} | Updated: {{ settings_obj.updated_at }}</p>
     {% endif %}
-    <p class="muted">Technical API credentials are managed internally by the system administrator.</p>
+    <!-- <p class="muted">Technical API credentials are managed internally by the system administrator.</p> -->
     <form method="post" class="form-grid">
         {% csrf_token %}
         {{ form.as_p }}
