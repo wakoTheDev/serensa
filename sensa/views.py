@@ -144,52 +144,33 @@ def entry_create_or_update(request):
     edit_entry = None
 
     if request.method == "POST":
-        form = DailyEntryForm(request.POST, user=user)
+        shop_id = request.POST.get("shop")
+        entry_date = request.POST.get("entry_date")
+        if shop_id and entry_date:
+            edit_entry = DailyEntry.objects.filter(shop_id=shop_id, entry_date=entry_date).first()
+
+        form = DailyEntryForm(request.POST, user=user, instance=edit_entry)
         if form.is_valid():
             shop = form.cleaned_data["shop"]
             if _is_vendor(user) and not user.profile.assigned_shops.filter(pk=shop.pk).exists():
                 return HttpResponseForbidden("You can only submit data to your assigned shops.")
 
-            entry, created = DailyEntry.objects.get_or_create(
-                shop=shop,
-                entry_date=form.cleaned_data["entry_date"],
-                defaults={
-                    "opening_stock": form.cleaned_data["opening_stock"],
-                    "stock_added": form.cleaned_data["stock_added"],
-                    "expenses": form.cleaned_data["expenses"],
-                    "sales_value": form.cleaned_data["sales_value"],
-                    "debts": form.cleaned_data["debts"],
-                    "closing_stock": form.cleaned_data["closing_stock"],
-                    "cash_received": form.cleaned_data["cash_received"],
-                    "notes": form.cleaned_data["notes"],
-                    "submitted_by": user,
-                },
-            )
+            entry = form.save(commit=False)
+            is_update = bool(entry.pk)
 
             if entry.entry_date == today or _is_admin(user):
-                entry.opening_stock = form.cleaned_data["opening_stock"]
-                entry.stock_added = form.cleaned_data["stock_added"]
-                entry.expenses = form.cleaned_data["expenses"]
-                entry.sales_value = form.cleaned_data["sales_value"]
-                entry.debts = form.cleaned_data["debts"]
-                entry.closing_stock = form.cleaned_data["closing_stock"]
-                entry.cash_received = form.cleaned_data["cash_received"]
-                entry.notes = form.cleaned_data["notes"]
                 entry.submitted_by = user
                 entry.save()
-                if created:
-                    messages.success(request, "Entry created successfully.")
-                else:
-                    messages.success(request, "Entry updated successfully.")
-            else:
-                messages.error(request, "Vendors can only update entries for the same day.")
+                messages.success(
+                    request,
+                    "Entry updated successfully." if is_update else "Entry created successfully.",
+                )
+                return redirect(f"{request.path}?shop={entry.shop_id}")
 
-            if _is_admin(user):
-                return redirect("admin_dashboard")
-            return redirect("vendor_dashboard")
-        shop_id = request.POST.get("shop")
-        if shop_id:
-            edit_entry = DailyEntry.objects.filter(shop_id=shop_id, entry_date=today).first()
+            messages.error(request, "Vendors can only update entries for the same day.")
+            return redirect(f"{request.path}?shop={shop.pk}")
+
+        messages.error(request, "Entry was not saved. Please correct the form errors and try again.")
     else:
         initial = {"entry_date": today}
 
