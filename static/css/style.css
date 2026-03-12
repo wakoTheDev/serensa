@@ -215,6 +215,21 @@ th, td {
   text-align: left;
 }
 
+.ledger-actions-cell {
+  white-space: nowrap;
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.ledger-action-btn {
+  padding: 0.18rem 0.4rem;
+  font-size: 0.68rem;
+  line-height: 1.1;
+  border-radius: 7px;
+  min-height: 0;
+}
+
 .big {
   font-size: 2rem;
   font-weight: 700;

@@ -124,9 +124,9 @@
                     <td>{{ entry.cash_received }}</td>
                     <td>{{ entry.mobile_money_received }}</td>
                     <td>{{ entry.profit_or_loss }}</td>
-                    <td>
-                        <a class="btn btn-alt" href="{% url 'entry_admin_edit' entry.id %}?next={{ request.get_full_path|urlencode }}">Edit</a>
-                        <a class="btn danger" href="{% url 'entry_admin_delete' entry.id %}?next={{ request.get_full_path|urlencode }}">Delete</a>
+                    <td class="ledger-actions-cell">
+                        <a class="btn btn-alt ledger-action-btn" href="{% url 'entry_admin_edit' entry.id %}?next={{ request.get_full_path|urlencode }}">Edit</a>
+                        <a class="btn danger ledger-action-btn" href="{% url 'entry_admin_delete' entry.id %}?next={{ request.get_full_path|urlencode }}">Delete</a>
                     </td>
                 </tr>
                 {% empty %}
