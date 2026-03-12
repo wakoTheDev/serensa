@@ -333,6 +333,7 @@ th, td {
   overflow-x: auto;
   overflow-y: hidden;
   padding-bottom: 0.4rem;
+  margin-bottom: 1rem;
 }
 
 .report-chart-board {

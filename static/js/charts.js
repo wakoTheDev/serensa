@@ -1,9 +1,11 @@
 (function () {
   const payloadEl = document.getElementById("chart-data");
-  const boardEl = document.getElementById("report-chart-board");
-  const emptyEl = document.getElementById("empty-charts");
+  const shopBoardEl = document.getElementById("shop-chart-board");
+  const generalBoardEl = document.getElementById("general-chart-board");
+  const emptyShopEl = document.getElementById("empty-shop-charts");
+  const emptyGeneralEl = document.getElementById("empty-general-charts");
 
-  if (!payloadEl || !boardEl || typeof Chart === "undefined") {
+  if (!payloadEl || !shopBoardEl || !generalBoardEl || typeof Chart === "undefined") {
     return;
   }
 
@@ -11,14 +13,23 @@
   const chartCards = Array.isArray(data.chartCards) ? data.chartCards : [];
 
   if (!chartCards.length) {
-    if (emptyEl) {
-      emptyEl.hidden = false;
-    }
+    if (emptyShopEl) emptyShopEl.hidden = false;
+    if (emptyGeneralEl) emptyGeneralEl.hidden = false;
     return;
   }
 
-  if (emptyEl) {
-    emptyEl.hidden = true;
+  const shopCards = chartCards.filter(function (card) {
+    return card.category === "Shop";
+  });
+  const generalCards = chartCards.filter(function (card) {
+    return card.category === "General";
+  });
+
+  if (emptyShopEl) {
+    emptyShopEl.hidden = shopCards.length > 0;
+  }
+  if (emptyGeneralEl) {
+    emptyGeneralEl.hidden = generalCards.length > 0;
   }
 
   const numberFormatter = function (val) {
@@ -71,46 +82,53 @@
     return options;
   };
 
-  chartCards.forEach(function (card, idx) {
-    const article = document.createElement("article");
-    article.className = "panel chart-panel compact-chart-panel";
+  const renderCharts = function (cards, boardEl, baseIdx) {
+    cards.forEach(function (card, idx) {
+      const article = document.createElement("article");
+      article.className = "panel chart-panel compact-chart-panel";
 
-    const category = document.createElement("p");
-    category.className = "chart-category-tag";
-    category.textContent = card.category || "General";
+      const category = document.createElement("p");
+      category.className = "chart-category-tag";
+      category.textContent = card.category || "General";
 
-    const title = document.createElement("h3");
-    title.textContent = card.title || "Report Chart";
+      const title = document.createElement("h3");
+      title.textContent = card.title || "Report Chart";
 
-    const wrap = document.createElement("div");
-    wrap.className = "chart-wrap" + (card.chartType === "line" || card.chartType === "pie" ? " trend-wrap" : "");
+      const wrap = document.createElement("div");
+      wrap.className =
+        "chart-wrap" +
+        (card.chartType === "line" || card.chartType === "pie" ? " trend-wrap" : "");
 
-    const canvas = document.createElement("canvas");
-    canvas.id = "report-chart-" + idx;
+      const canvas = document.createElement("canvas");
+      canvas.id = "report-chart-" + baseIdx + "-" + idx;
 
-    wrap.appendChild(canvas);
-    article.appendChild(category);
-    article.appendChild(title);
-    article.appendChild(wrap);
-    boardEl.appendChild(article);
+      wrap.appendChild(canvas);
+      article.appendChild(category);
+      article.appendChild(title);
+      article.appendChild(wrap);
+      boardEl.appendChild(article);
 
-    const datasets = (card.datasets || []).map(function (set) {
-      const next = Object.assign({}, set);
-      if (card.chartType === "line") {
-        if (next.pointRadius === undefined) next.pointRadius = 4;
-        if (next.pointHoverRadius === undefined) next.pointHoverRadius = 7;
-        if (next.pointHoverBorderWidth === undefined) next.pointHoverBorderWidth = 2;
-      }
-      return next;
+      const datasets = (card.datasets || []).map(function (set) {
+        const next = Object.assign({}, set);
+        if (card.chartType === "line") {
+          if (next.pointRadius === undefined) next.pointRadius = 4;
+          if (next.pointHoverRadius === undefined) next.pointHoverRadius = 7;
+          if (next.pointHoverBorderWidth === undefined) next.pointHoverBorderWidth = 2;
+        }
+        return next;
+      });
+
+      new Chart(canvas, {
+        type: card.chartType || "bar",
+        data: {
+          labels: card.labels || [],
+          datasets: datasets,
+        },
+        options: createBaseOptions(card.chartType || "bar"),
+      });
     });
+  };
 
-    new Chart(canvas, {
-      type: card.chartType || "bar",
-      data: {
-        labels: card.labels || [],
-        datasets: datasets,
-      },
-      options: createBaseOptions(card.chartType || "bar"),
-    });
-  });
+  renderCharts(shopCards, shopBoardEl, 0);
+  renderCharts(generalCards, generalBoardEl, 1000);
 })();

@@ -70,12 +70,23 @@
 </section>
 
 <section class="panel">
-    <h3>Charts Overview</h3>
-    <p class="muted">Charts are generated dynamically from database data for the selected filters.</p>
-    <div class="report-chart-scroll" role="region" aria-label="Charts Horizontal Scroll">
-        <div class="report-chart-board" id="report-chart-board"></div>
-        <div class="muted" id="empty-charts" {% if chart_cards_count %}hidden{% endif %}>
-            No chart data in the selected filter.
+    <h3>Shop Charts</h3>
+    <p class="muted">Shop-specific trends and metrics. Scroll horizontally to view all shops.</p>
+    <div class="report-chart-scroll" role="region" aria-label="Shop Charts Scroll">
+        <div class="report-chart-board" id="shop-chart-board"></div>
+        <div class="muted" id="empty-shop-charts" hidden>
+            No shop chart data available.
+        </div>
+    </div>
+</section>
+
+<section class="panel">
+    <h3>General Charts</h3>
+    <p class="muted">All-shops aggregated analytics. Scroll horizontally to view all metrics.</p>
+    <div class="report-chart-scroll" role="region" aria-label="General Charts Scroll">
+        <div class="report-chart-board" id="general-chart-board"></div>
+        <div class="muted" id="empty-general-charts" hidden>
+            No general chart data available.
         </div>
     </div>
 </section>
