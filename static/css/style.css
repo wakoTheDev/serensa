@@ -131,6 +131,17 @@ a, .link-btn {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.form-grid button {
+  grid-column: 1 / 2;
+  align-self: flex-end;
+}
+
 .form-grid p,
 .form-inline p {
   display: flex;
@@ -411,6 +422,10 @@ th, td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .filter-actions {
     grid-column: 1 / -1;
   }
@@ -437,6 +452,7 @@ th, td {
   }
 
   .report-filter-grid,
+  .form-grid,
   .three-col {
     grid-template-columns: 1fr;
   }
