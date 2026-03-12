@@ -268,12 +268,12 @@ th, td {
 
 .chart-wrap {
   position: relative;
-  height: clamp(220px, 40vw, 360px);
+  height: clamp(154px, 28vw, 252px);
   width: 100%;
 }
 
 .trend-wrap {
-  height: clamp(240px, 42vw, 380px);
+  height: clamp(168px, 29.4vw, 266px);
 }
 
 .report-chart-grid {
@@ -338,21 +338,21 @@ th, td {
 
 .report-chart-board {
   display: grid;
-  grid-template-rows: repeat(2, minmax(240px, auto));
+  grid-template-rows: repeat(2, minmax(168px, auto));
   grid-auto-flow: column;
-  grid-auto-columns: minmax(320px, 1fr);
-  gap: 1rem;
-  min-width: max(100%, 1040px);
+  grid-auto-columns: minmax(224px, 1fr);
+  gap: 0.7rem;
+  min-width: max(100%, 728px);
 }
 
 .compact-chart-panel {
   margin-bottom: 0;
-  min-height: 260px;
+  min-height: 182px;
 }
 
 .compact-chart-panel h3 {
-  margin-bottom: 0.6rem;
-  font-size: 1rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
 }
 
 .chart-category-tag {
@@ -401,8 +401,8 @@ th, td {
   }
 
   .report-chart-board {
-    grid-auto-columns: minmax(300px, 1fr);
-    min-width: 960px;
+    grid-auto-columns: minmax(210px, 1fr);
+    min-width: 672px;
   }
 
   .report-filter-grid {
@@ -431,7 +431,7 @@ th, td {
 
   .chart-wrap,
   .trend-wrap {
-    height: 220px;
+    height: 154px;
   }
 
   .report-filter-grid,
