@@ -19,10 +19,39 @@
             </a>
         </div>
     </div>
-    <form method="get" class="form-inline">
-        {{ form.as_p }}
-        <button class="btn" type="submit">Apply Filter</button>
-        <a class="btn" href="{% url 'report_view' %}">Clear Filters</a>
+    <form method="get" class="report-filter-grid" aria-label="Report Filters">
+        <div class="filter-field">
+            {{ form.period.label_tag }}
+            {{ form.period }}
+            {{ form.period.errors }}
+        </div>
+        <div class="filter-field">
+            {{ form.date.label_tag }}
+            {{ form.date }}
+            {{ form.date.errors }}
+        </div>
+        <div class="filter-field">
+            {{ form.start_date.label_tag }}
+            {{ form.start_date }}
+            {{ form.start_date.errors }}
+        </div>
+        <div class="filter-field">
+            {{ form.end_date.label_tag }}
+            {{ form.end_date }}
+            {{ form.end_date.errors }}
+        </div>
+        <div class="filter-field">
+            {{ form.shop.label_tag }}
+            {{ form.shop }}
+            {{ form.shop.errors }}
+        </div>
+        <div class="filter-actions">
+            <button class="btn" type="submit">Apply Filter</button>
+            <a class="btn btn-alt" href="{% url 'report_view' %}">Clear Filters</a>
+        </div>
+        {% if form.non_field_errors %}
+        <div class="filter-errors">{{ form.non_field_errors }}</div>
+        {% endif %}
     </form>
     <p>Period: {{ start }} to {{ end }} ({{ filter_mode }})</p>
     {% if balance %}
@@ -40,40 +69,14 @@
     </ul>
 </section>
 
-<section class="grid two report-chart-grid">
-    <article class="panel chart-panel">
-        <h3>{{ shop_bar_title }}</h3>
-        <div class="chart-wrap">
-            <canvas id="reportChart"></canvas>
+<section class="panel">
+    <h3>Charts Overview</h3>
+    <p class="muted">Charts are generated dynamically from database data for the selected filters.</p>
+    <div class="report-chart-scroll" role="region" aria-label="Charts Horizontal Scroll">
+        <div class="report-chart-board" id="report-chart-board"></div>
+        <div class="muted" id="empty-charts" {% if chart_cards_count %}hidden{% endif %}>
+            No chart data in the selected filter.
         </div>
-    </article>
-    <article class="panel chart-panel">
-        <h3>{{ shop_chart_title }}</h3>
-        <div class="chart-wrap trend-wrap">
-            <canvas id="trendChart"></canvas>
-        </div>
-    </article>
-</section>
-
-<section class="grid two report-chart-grid">
-    <article class="panel chart-panel">
-        <h3>All Shops Cumulative Trend</h3>
-        <div class="chart-wrap trend-wrap">
-            <canvas id="generalCumulativeChart"></canvas>
-        </div>
-    </article>
-    <article class="panel chart-panel">
-        <h3>Per-Shop Comparison</h3>
-        <div class="chart-wrap">
-            <canvas id="shopComparisonChart"></canvas>
-        </div>
-    </article>
-</section>
-
-<section class="panel chart-panel">
-    <h3>General Distribution (All Shops)</h3>
-    <div class="chart-wrap trend-wrap">
-        <canvas id="generalPieChart"></canvas>
     </div>
 </section>
 

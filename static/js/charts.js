@@ -1,271 +1,116 @@
 (function () {
   const payloadEl = document.getElementById("chart-data");
-  const chartEl = document.getElementById("reportChart");
-  const trendEl = document.getElementById("trendChart");
-  const generalCumulativeEl = document.getElementById("generalCumulativeChart");
-  const shopComparisonEl = document.getElementById("shopComparisonChart");
-  const generalPieEl = document.getElementById("generalPieChart");
+  const boardEl = document.getElementById("report-chart-board");
+  const emptyEl = document.getElementById("empty-charts");
 
-  if (!payloadEl || typeof Chart === "undefined") {
+  if (!payloadEl || !boardEl || typeof Chart === "undefined") {
     return;
   }
 
-  const data = JSON.parse(payloadEl.textContent);
+  const data = JSON.parse(payloadEl.textContent || "{}");
+  const chartCards = Array.isArray(data.chartCards) ? data.chartCards : [];
 
-  if (chartEl) {
-    new Chart(chartEl, {
-      type: "bar",
-      data: {
-        labels: data.shopBarLabels || [],
-        datasets: [
-          {
-            label: `${data.shopName || "Shop"} (${data.shopBarDate || "Today"})`,
-            data: data.shopBarValues || [],
-            borderRadius: 8,
-            backgroundColor: [
-              "rgba(15, 118, 110, 0.75)",
-              "rgba(180, 83, 9, 0.75)",
-              "rgba(190, 24, 93, 0.75)",
-              "rgba(30, 64, 175, 0.75)",
-              "rgba(22, 101, 52, 0.75)",
-            ],
-          },
-        ],
+  if (!chartCards.length) {
+    if (emptyEl) {
+      emptyEl.hidden = false;
+    }
+    return;
+  }
+
+  if (emptyEl) {
+    emptyEl.hidden = true;
+  }
+
+  const numberFormatter = function (val) {
+    return Number(val || 0).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  const createBaseOptions = function (type) {
+    const options = {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: "index",
+        intersect: false,
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-          mode: "index",
-          intersect: false,
+      plugins: {
+        legend: {
+          display: type !== "bar",
+          position: type === "pie" ? "bottom" : "top",
         },
-        plugins: {
-          legend: {
-            display: false,
-          },
-          tooltip: {
-            callbacks: {
-              label: function (ctx) {
-                const val = ctx.parsed.y;
-                return ` ${ctx.dataset.label}: ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-              },
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-          },
-          y: {
-            beginAtZero: true,
-            ticks: {
-              callback: function (val) {
-                return val.toLocaleString();
-              },
+        tooltip: {
+          callbacks: {
+            label: function (ctx) {
+              const value = type === "pie" ? ctx.raw : ctx.parsed.y;
+              return " " + ctx.dataset.label + ": " + numberFormatter(value);
             },
           },
         },
       },
-    });
-  }
+    };
 
-  if (trendEl) {
-    new Chart(trendEl, {
-      type: "line",
-      data: {
-        labels: data.trendLabels || [],
-        datasets: [
-          {
-            label: "Sales",
-            data: data.trendSales || [],
-            borderColor: "#0f766e",
-            backgroundColor: "rgba(15, 118, 110, 0.08)",
-            tension: 0.45,
-            fill: true,
-            pointRadius: 4,
-            pointHoverRadius: 7,
-            pointBackgroundColor: "#0f766e",
-            pointHoverBackgroundColor: "#fff",
-            pointHoverBorderColor: "#0f766e",
-            pointHoverBorderWidth: 2,
-          },
-          {
-            label: "Expenses",
-            data: data.trendExpenses || [],
-            borderColor: "#b45309",
-            backgroundColor: "rgba(180, 83, 9, 0.08)",
-            tension: 0.45,
-            fill: true,
-            pointRadius: 4,
-            pointHoverRadius: 7,
-            pointBackgroundColor: "#b45309",
-            pointHoverBackgroundColor: "#fff",
-            pointHoverBorderColor: "#b45309",
-            pointHoverBorderWidth: 2,
-          },
-          {
-            label: "Profit/Loss",
-            data: data.trendProfit || [],
-            borderColor: "#1d4ed8",
-            backgroundColor: "rgba(29, 78, 216, 0.08)",
-            tension: 0.45,
-            fill: true,
-            pointRadius: 4,
-            pointHoverRadius: 7,
-            pointBackgroundColor: "#1d4ed8",
-            pointHoverBackgroundColor: "#fff",
-            pointHoverBorderColor: "#1d4ed8",
-            pointHoverBorderWidth: 2,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-          mode: "index",
-          intersect: false,
+    if (type !== "pie") {
+      options.scales = {
+        x: {
+          grid: { display: false },
         },
-        plugins: {
-          legend: {
-            display: true,
-          },
-          tooltip: {
-            enabled: true,
-            mode: "index",
-            intersect: false,
-            callbacks: {
-              label: function (ctx) {
-                const val = ctx.parsed.y;
-                return ` ${ctx.dataset.label}: ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-              },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            callback: function (val) {
+              return Number(val).toLocaleString();
             },
           },
         },
-        scales: {
-          x: {
-            grid: { display: false },
-          },
-          y: {
-            beginAtZero: true,
-            ticks: {
-              callback: function (val) {
-                return val.toLocaleString();
-              },
-            },
-          },
-        },
-      },
-    });
-  }
+      };
+    }
 
-  if (generalCumulativeEl) {
-    new Chart(generalCumulativeEl, {
-      type: "line",
-      data: {
-        labels: data.allCumulativeLabels || [],
-        datasets: [
-          {
-            label: "Cumulative Sales",
-            data: data.allCumulativeSales || [],
-            borderColor: "#0f766e",
-            backgroundColor: "rgba(15, 118, 110, 0.08)",
-            tension: 0.4,
-            fill: true,
-          },
-          {
-            label: "Cumulative Debts",
-            data: data.allCumulativeDebts || [],
-            borderColor: "#be123c",
-            backgroundColor: "rgba(190, 18, 60, 0.08)",
-            tension: 0.4,
-            fill: true,
-          },
-          {
-            label: "Cumulative Profit/Loss",
-            data: data.allCumulativeProfit || [],
-            borderColor: "#1d4ed8",
-            backgroundColor: "rgba(29, 78, 216, 0.08)",
-            tension: 0.4,
-            fill: true,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-          mode: "index",
-          intersect: false,
-        },
-        plugins: {
-          legend: { display: true },
-        },
-      },
-    });
-  }
+    return options;
+  };
 
-  if (shopComparisonEl) {
-    new Chart(shopComparisonEl, {
-      type: "bar",
-      data: {
-        labels: data.shopCompareLabels || [],
-        datasets: [
-          {
-            label: "Sales",
-            data: data.shopCompareSales || [],
-            backgroundColor: "rgba(15, 118, 110, 0.75)",
-          },
-          {
-            label: "Debts",
-            data: data.shopCompareDebts || [],
-            backgroundColor: "rgba(190, 24, 93, 0.75)",
-          },
-          {
-            label: "Profit/Loss",
-            data: data.shopCompareProfit || [],
-            backgroundColor: "rgba(29, 78, 216, 0.75)",
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-          mode: "index",
-          intersect: false,
-        },
-      },
-    });
-  }
+  chartCards.forEach(function (card, idx) {
+    const article = document.createElement("article");
+    article.className = "panel chart-panel compact-chart-panel";
 
-  if (generalPieEl) {
-    new Chart(generalPieEl, {
-      type: "pie",
-      data: {
-        labels: data.generalPieLabels || [],
-        datasets: [
-          {
-            data: data.generalPieValues || [],
-            backgroundColor: [
-              "rgba(15, 118, 110, 0.8)",
-              "rgba(180, 83, 9, 0.8)",
-              "rgba(190, 24, 93, 0.8)",
-              "rgba(29, 78, 216, 0.8)",
-              "rgba(127, 29, 29, 0.8)",
-            ],
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: "bottom",
-          },
-        },
-      },
+    const category = document.createElement("p");
+    category.className = "chart-category-tag";
+    category.textContent = card.category || "General";
+
+    const title = document.createElement("h3");
+    title.textContent = card.title || "Report Chart";
+
+    const wrap = document.createElement("div");
+    wrap.className = "chart-wrap" + (card.chartType === "line" || card.chartType === "pie" ? " trend-wrap" : "");
+
+    const canvas = document.createElement("canvas");
+    canvas.id = "report-chart-" + idx;
+
+    wrap.appendChild(canvas);
+    article.appendChild(category);
+    article.appendChild(title);
+    article.appendChild(wrap);
+    boardEl.appendChild(article);
+
+    const datasets = (card.datasets || []).map(function (set) {
+      const next = Object.assign({}, set);
+      if (card.chartType === "line") {
+        if (next.pointRadius === undefined) next.pointRadius = 4;
+        if (next.pointHoverRadius === undefined) next.pointHoverRadius = 7;
+        if (next.pointHoverBorderWidth === undefined) next.pointHoverBorderWidth = 2;
+      }
+      return next;
     });
-  }
+
+    new Chart(canvas, {
+      type: card.chartType || "bar",
+      data: {
+        labels: card.labels || [],
+        datasets: datasets,
+      },
+      options: createBaseOptions(card.chartType || "bar"),
+    });
+  });
 })();

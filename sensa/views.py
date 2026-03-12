@@ -386,6 +386,18 @@ def _build_report_dataset(query_data):
         progressive_shop_expenses.append(float(running_expenses))
         progressive_shop_profit.append(float(running_profit))
 
+    shop_totals = shop_entries.aggregate(
+        sales=Sum("sales_value"),
+        expenses=Sum("expenses"),
+        debts=Sum("debts"),
+    )
+    shop_sales_total = shop_totals["sales"] or Decimal("0.00")
+    shop_expenses_total = shop_totals["expenses"] or Decimal("0.00")
+    shop_debts_total = shop_totals["debts"] or Decimal("0.00")
+    shop_profit_total = sum((entry.profit_or_loss or Decimal("0.00") for entry in shop_entries), Decimal("0.00"))
+    shop_net_profit = shop_profit_total if shop_profit_total > Decimal("0.00") else Decimal("0.00")
+    shop_net_loss = abs(shop_profit_total) if shop_profit_total < Decimal("0.00") else Decimal("0.00")
+
     # Shop-specific same-day bar snapshot.
     bar_date = selected_date if filter_mode == "period" else end
     if filter_mode == "historical":
@@ -448,19 +460,42 @@ def _build_report_dataset(query_data):
 
     # Per-shop comparison across selected range.
     shop_compare = OrderedDict()
+    shop_daily_data = OrderedDict()  # For per-shop trend charts
+    
     for entry in entries:
-        key = entry.shop.name
-        if key not in shop_compare:
-            shop_compare[key] = {
+        shop_key = entry.shop.name
+        if shop_key not in shop_compare:
+            shop_compare[shop_key] = {
                 "sales": Decimal("0.00"),
                 "expenses": Decimal("0.00"),
                 "debts": Decimal("0.00"),
                 "profit": Decimal("0.00"),
             }
-        shop_compare[key]["sales"] += entry.sales_value or Decimal("0.00")
-        shop_compare[key]["expenses"] += entry.expenses or Decimal("0.00")
-        shop_compare[key]["debts"] += entry.debts or Decimal("0.00")
-        shop_compare[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
+            shop_daily_data[shop_key] = OrderedDict()
+            cursor = start
+            while cursor <= end:
+                shop_daily_data[shop_key][cursor.isoformat()] = {
+                    "sales": Decimal("0.00"),
+                    "expenses": Decimal("0.00"),
+                    "profit": Decimal("0.00"),
+                }
+                cursor += timedelta(days=1)
+        
+        shop_compare[shop_key]["sales"] += entry.sales_value or Decimal("0.00")
+        shop_compare[shop_key]["expenses"] += entry.expenses or Decimal("0.00")
+        shop_compare[shop_key]["debts"] += entry.debts or Decimal("0.00")
+        shop_compare[shop_key]["profit"] += entry.profit_or_loss or Decimal("0.00")
+        
+        entry_key = entry.entry_date.isoformat()
+        if entry_key not in shop_daily_data[shop_key]:
+            shop_daily_data[shop_key][entry_key] = {
+                "sales": Decimal("0.00"),
+                "expenses": Decimal("0.00"),
+                "profit": Decimal("0.00"),
+            }
+        shop_daily_data[shop_key][entry_key]["sales"] += entry.sales_value or Decimal("0.00")
+        shop_daily_data[shop_key][entry_key]["expenses"] += entry.expenses or Decimal("0.00")
+        shop_daily_data[shop_key][entry_key]["profit"] += entry.profit_or_loss or Decimal("0.00")
 
     chart_payload = {
         "shopName": chart_shop.name if chart_shop else "No Shop",
@@ -477,6 +512,14 @@ def _build_report_dataset(query_data):
         "trendSales": progressive_shop_sales,
         "trendExpenses": progressive_shop_expenses,
         "trendProfit": progressive_shop_profit,
+        "shopPieLabels": ["Sales", "Expenses", "Debts", "Net Profit", "Net Loss"],
+        "shopPieValues": [
+            float(shop_sales_total),
+            float(shop_expenses_total),
+            float(shop_debts_total),
+            float(shop_net_profit),
+            float(shop_net_loss),
+        ],
         "allCumulativeLabels": list(all_daily_points.keys()),
         "allCumulativeSales": cumulative_sales,
         "allCumulativeExpenses": cumulative_expenses,
@@ -497,6 +540,232 @@ def _build_report_dataset(query_data):
         ],
     }
 
+    chart_cards = []
+
+    if any(value != 0.0 for value in chart_payload["shopBarValues"]):
+        chart_cards.append(
+            {
+                "category": "Shop",
+                "title": f"{chart_payload['shopName']} Day Snapshot ({chart_payload['shopBarDate']})",
+                "chartType": "bar",
+                "labels": chart_payload["shopBarLabels"],
+                "datasets": [
+                    {
+                        "label": f"{chart_payload['shopName']} ({chart_payload['shopBarDate']})",
+                        "data": chart_payload["shopBarValues"],
+                        "backgroundColor": [
+                            "rgba(15, 118, 110, 0.75)",
+                            "rgba(180, 83, 9, 0.75)",
+                            "rgba(190, 24, 93, 0.75)",
+                            "rgba(30, 64, 175, 0.75)",
+                            "rgba(22, 101, 52, 0.75)",
+                        ],
+                        "borderRadius": 8,
+                    }
+                ],
+            }
+        )
+
+    if chart_payload["trendLabels"]:
+        chart_cards.append(
+            {
+                "category": "Shop",
+                "title": f"{chart_payload['shopName']} Historical Trend",
+                "chartType": "line",
+                "labels": chart_payload["trendLabels"],
+                "datasets": [
+                    {
+                        "label": "Sales",
+                        "data": chart_payload["trendSales"],
+                        "borderColor": "#0f766e",
+                        "backgroundColor": "rgba(15, 118, 110, 0.08)",
+                        "tension": 0.45,
+                        "fill": True,
+                    },
+                    {
+                        "label": "Expenses",
+                        "data": chart_payload["trendExpenses"],
+                        "borderColor": "#b45309",
+                        "backgroundColor": "rgba(180, 83, 9, 0.08)",
+                        "tension": 0.45,
+                        "fill": True,
+                    },
+                    {
+                        "label": "Profit/Loss",
+                        "data": chart_payload["trendProfit"],
+                        "borderColor": "#1d4ed8",
+                        "backgroundColor": "rgba(29, 78, 216, 0.08)",
+                        "tension": 0.45,
+                        "fill": True,
+                    },
+                ],
+            }
+        )
+
+    if any(value != 0.0 for value in chart_payload["shopPieValues"]):
+        chart_cards.append(
+            {
+                "category": "Shop",
+                "title": f"{chart_payload['shopName']} Cumulative Distribution",
+                "chartType": "pie",
+                "labels": chart_payload["shopPieLabels"],
+                "datasets": [
+                    {
+                        "label": chart_payload["shopName"],
+                        "data": chart_payload["shopPieValues"],
+                        "backgroundColor": [
+                            "rgba(15, 118, 110, 0.8)",
+                            "rgba(180, 83, 9, 0.8)",
+                            "rgba(190, 24, 93, 0.8)",
+                            "rgba(29, 78, 216, 0.8)",
+                            "rgba(127, 29, 29, 0.8)",
+                        ],
+                    }
+                ],
+            }
+        )
+
+    if chart_payload["allCumulativeLabels"]:
+        chart_cards.append(
+            {
+                "category": "General",
+                "title": "All Shops Cumulative Trend",
+                "chartType": "line",
+                "labels": chart_payload["allCumulativeLabels"],
+                "datasets": [
+                    {
+                        "label": "Cumulative Sales",
+                        "data": chart_payload["allCumulativeSales"],
+                        "borderColor": "#0f766e",
+                        "backgroundColor": "rgba(15, 118, 110, 0.08)",
+                        "tension": 0.4,
+                        "fill": True,
+                    },
+                    {
+                        "label": "Cumulative Debts",
+                        "data": chart_payload["allCumulativeDebts"],
+                        "borderColor": "#be123c",
+                        "backgroundColor": "rgba(190, 18, 60, 0.08)",
+                        "tension": 0.4,
+                        "fill": True,
+                    },
+                    {
+                        "label": "Cumulative Profit/Loss",
+                        "data": chart_payload["allCumulativeProfit"],
+                        "borderColor": "#1d4ed8",
+                        "backgroundColor": "rgba(29, 78, 216, 0.08)",
+                        "tension": 0.4,
+                        "fill": True,
+                    },
+                ],
+            }
+        )
+
+    if chart_payload["shopCompareLabels"]:
+        chart_cards.append(
+            {
+                "category": "General",
+                "title": "Per-Shop Comparison",
+                "chartType": "bar",
+                "labels": chart_payload["shopCompareLabels"],
+                "datasets": [
+                    {
+                        "label": "Sales",
+                        "data": chart_payload["shopCompareSales"],
+                        "backgroundColor": "rgba(15, 118, 110, 0.75)",
+                    },
+                    {
+                        "label": "Debts",
+                        "data": chart_payload["shopCompareDebts"],
+                        "backgroundColor": "rgba(190, 24, 93, 0.75)",
+                    },
+                    {
+                        "label": "Profit/Loss",
+                        "data": chart_payload["shopCompareProfit"],
+                        "backgroundColor": "rgba(29, 78, 216, 0.75)",
+                    },
+                ],
+            }
+        )
+
+    for shop_name in sorted(shop_daily_data.keys()):
+        daily_points = shop_daily_data[shop_name]
+        progressive_sales = []
+        progressive_expenses = []
+        progressive_profit = []
+        running_sales = Decimal("0.00")
+        running_expenses = Decimal("0.00")
+        running_profit = Decimal("0.00")
+
+        for point in daily_points.values():
+            running_sales += point["sales"]
+            running_expenses += point["expenses"]
+            running_profit += point["profit"]
+            progressive_sales.append(float(running_sales))
+            progressive_expenses.append(float(running_expenses))
+            progressive_profit.append(float(running_profit))
+
+        if any(val != 0.0 for val in progressive_sales + progressive_expenses + progressive_profit):
+            chart_cards.append(
+                {
+                    "category": "Shop",
+                    "title": f"{shop_name} Trend ({start} to {end})",
+                    "chartType": "line",
+                    "labels": list(daily_points.keys()),
+                    "datasets": [
+                        {
+                            "label": "Sales",
+                            "data": progressive_sales,
+                            "borderColor": "#0f766e",
+                            "backgroundColor": "rgba(15, 118, 110, 0.08)",
+                            "tension": 0.45,
+                            "fill": True,
+                        },
+                        {
+                            "label": "Expenses",
+                            "data": progressive_expenses,
+                            "borderColor": "#b45309",
+                            "backgroundColor": "rgba(180, 83, 9, 0.08)",
+                            "tension": 0.45,
+                            "fill": True,
+                        },
+                        {
+                            "label": "Profit/Loss",
+                            "data": progressive_profit,
+                            "borderColor": "#1d4ed8",
+                            "backgroundColor": "rgba(29, 78, 216, 0.08)",
+                            "tension": 0.45,
+                            "fill": True,
+                        },
+                    ],
+                }
+            )
+
+    if any(value != 0.0 for value in chart_payload["generalPieValues"]):
+        chart_cards.append(
+            {
+                "category": "General",
+                "title": "General Distribution (All Shops)",
+                "chartType": "pie",
+                "labels": chart_payload["generalPieLabels"],
+                "datasets": [
+                    {
+                        "label": "All Shops",
+                        "data": chart_payload["generalPieValues"],
+                        "backgroundColor": [
+                            "rgba(15, 118, 110, 0.8)",
+                            "rgba(180, 83, 9, 0.8)",
+                            "rgba(190, 24, 93, 0.8)",
+                            "rgba(29, 78, 216, 0.8)",
+                            "rgba(127, 29, 29, 0.8)",
+                        ],
+                    }
+                ],
+            }
+        )
+
+    chart_payload["chartCards"] = chart_cards
+
     return {
         "form": form,
         "entries": entries,
@@ -512,6 +781,7 @@ def _build_report_dataset(query_data):
         "total_sales": total_sales,
         "profit_or_loss": profit_or_loss,
         "chart_payload": chart_payload,
+        "chart_cards_count": len(chart_cards),
     }
 
 
