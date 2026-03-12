@@ -564,19 +564,6 @@ def _build_report_dataset(query_data):
     entries = list(entries_qs)
     general_entries = list(entries_in_range_qs)
 
-    shops_in_scope = Shop.objects.filter(active=True)
-    if selected_shop:
-        chart_shop = selected_shop
-    else:
-        chart_shop = (
-            shops_in_scope.filter(entries__entry_date__range=(start, end))
-            .distinct()
-            .order_by("name")
-            .first()
-        )
-
-    shop_entries = [entry for entry in entries if chart_shop and entry.shop_id == chart_shop.id]
-
     stock_metrics = _calculate_stock_metrics(entries)
     total_sales = sum((entry.sales_value or Decimal("0.00") for entry in entries), Decimal("0.00"))
     total_expenses = sum((entry.expenses or Decimal("0.00") for entry in entries), Decimal("0.00"))
@@ -602,63 +589,31 @@ def _build_report_dataset(query_data):
         "paid_sales": paid_sales_total,
     }
 
-    shop_daily_points = OrderedDict()
-    cursor = start
-    while cursor <= end:
-        shop_daily_points[cursor.isoformat()] = {
-            "sales": Decimal("0.00"),
-            "expenses": Decimal("0.00"),
-            "debts": Decimal("0.00"),
-            "mobile": Decimal("0.00"),
-            "profit": Decimal("0.00"),
-        }
-        cursor += timedelta(days=1)
-
-    for entry in shop_entries:
-        key = entry.entry_date.isoformat()
-        shop_daily_points[key]["sales"] += entry.sales_value or Decimal("0.00")
-        shop_daily_points[key]["expenses"] += entry.expenses or Decimal("0.00")
-        shop_daily_points[key]["debts"] += entry.debts or Decimal("0.00")
-        shop_daily_points[key]["mobile"] += entry.mobile_money_received
-        shop_daily_points[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
-
-    progressive_shop_sales = []
-    progressive_shop_expenses = []
-    progressive_shop_profit = []
-    running_sales = Decimal("0.00")
-    running_expenses = Decimal("0.00")
-    running_profit = Decimal("0.00")
-
-    for point in shop_daily_points.values():
-        running_sales += point["sales"]
-        running_expenses += point["expenses"]
-        running_profit += point["profit"]
-        progressive_shop_sales.append(float(running_sales))
-        progressive_shop_expenses.append(float(running_expenses))
-        progressive_shop_profit.append(float(running_profit))
-
-    shop_stock_metrics = _calculate_stock_metrics(shop_entries)
-    shop_sales_total = sum((entry.sales_value or Decimal("0.00") for entry in shop_entries), Decimal("0.00"))
-    shop_expenses_total = sum((entry.expenses or Decimal("0.00") for entry in shop_entries), Decimal("0.00"))
-    shop_debts_total = sum((entry.debts or Decimal("0.00") for entry in shop_entries), Decimal("0.00"))
-    shop_cash_total = sum((entry.cash_received or Decimal("0.00") for entry in shop_entries), Decimal("0.00"))
-    shop_mobile_total = sum((entry.mobile_money_received for entry in shop_entries), Decimal("0.00"))
-    shop_profit_total = shop_sales_total - shop_stock_metrics["stock_consumed"] - shop_expenses_total
-    shop_net_profit = shop_profit_total if shop_profit_total > Decimal("0.00") else Decimal("0.00")
-    shop_net_loss = abs(shop_profit_total) if shop_profit_total < Decimal("0.00") else Decimal("0.00")
-
     bar_date = selected_date if filter_mode == "period" else end
     if filter_mode == "historical":
         bar_date = today
 
-    shop_day_entries = [entry for entry in shop_entries if entry.entry_date == bar_date]
-    day_sales = sum((entry.sales_value or Decimal("0.00") for entry in shop_day_entries), Decimal("0.00"))
-    day_expenses = sum((entry.expenses or Decimal("0.00") for entry in shop_day_entries), Decimal("0.00"))
-    day_debts = sum((entry.debts or Decimal("0.00") for entry in shop_day_entries), Decimal("0.00"))
-    day_cash = sum((entry.cash_received or Decimal("0.00") for entry in shop_day_entries), Decimal("0.00"))
-    day_mobile = sum((entry.mobile_money_received for entry in shop_day_entries), Decimal("0.00"))
-    day_profit = sum((entry.profit_or_loss or Decimal("0.00") for entry in shop_day_entries), Decimal("0.00"))
+    # --- Per-shop chart data built from `entries` (respects shop filter) ---
+    shops_chart_data = OrderedDict()
+    for entry in entries:
+        shop_name = entry.shop.name
+        if shop_name not in shops_chart_data:
+            shops_chart_data[shop_name] = {"entries": [], "daily_points": OrderedDict()}
+            cursor = start
+            while cursor <= end:
+                shops_chart_data[shop_name]["daily_points"][cursor.isoformat()] = {
+                    "sales": Decimal("0.00"),
+                    "expenses": Decimal("0.00"),
+                    "profit": Decimal("0.00"),
+                }
+                cursor += timedelta(days=1)
+        shops_chart_data[shop_name]["entries"].append(entry)
+        key = entry.entry_date.isoformat()
+        shops_chart_data[shop_name]["daily_points"][key]["sales"] += entry.sales_value or Decimal("0.00")
+        shops_chart_data[shop_name]["daily_points"][key]["expenses"] += entry.expenses or Decimal("0.00")
+        shops_chart_data[shop_name]["daily_points"][key]["profit"] += entry.profit_or_loss or Decimal("0.00")
 
+    # --- General cumulative data from `general_entries` (all shops, not shop-filtered) ---
     all_daily_points = OrderedDict()
     cursor = start
     while cursor <= end:
@@ -670,12 +625,29 @@ def _build_report_dataset(query_data):
         }
         cursor += timedelta(days=1)
 
+    shop_compare = OrderedDict()
+
     for entry in general_entries:
         key = entry.entry_date.isoformat()
         all_daily_points[key]["sales"] += entry.sales_value or Decimal("0.00")
         all_daily_points[key]["expenses"] += entry.expenses or Decimal("0.00")
         all_daily_points[key]["debts"] += entry.debts or Decimal("0.00")
         all_daily_points[key]["profit"] += entry.profit_or_loss or Decimal("0.00")
+
+        shop_key = entry.shop.name
+        if shop_key not in shop_compare:
+            shop_compare[shop_key] = {
+                "sales": Decimal("0.00"),
+                "expenses": Decimal("0.00"),
+                "debts": Decimal("0.00"),
+                "mobile": Decimal("0.00"),
+                "profit": Decimal("0.00"),
+            }
+        shop_compare[shop_key]["sales"] += entry.sales_value or Decimal("0.00")
+        shop_compare[shop_key]["expenses"] += entry.expenses or Decimal("0.00")
+        shop_compare[shop_key]["debts"] += entry.debts or Decimal("0.00")
+        shop_compare[shop_key]["mobile"] += entry.mobile_money_received
+        shop_compare[shop_key]["profit"] += entry.profit_or_loss or Decimal("0.00")
 
     cumulative_sales = []
     cumulative_expenses = []
@@ -696,40 +668,6 @@ def _build_report_dataset(query_data):
         cumulative_debts.append(float(running_debts_all))
         cumulative_profit.append(float(running_profit_all))
 
-    shop_compare = OrderedDict()
-    shop_daily_data = OrderedDict()
-
-    for entry in general_entries:
-        shop_key = entry.shop.name
-        if shop_key not in shop_compare:
-            shop_compare[shop_key] = {
-                "sales": Decimal("0.00"),
-                "expenses": Decimal("0.00"),
-                "debts": Decimal("0.00"),
-                "mobile": Decimal("0.00"),
-                "profit": Decimal("0.00"),
-            }
-            shop_daily_data[shop_key] = OrderedDict()
-            cursor = start
-            while cursor <= end:
-                shop_daily_data[shop_key][cursor.isoformat()] = {
-                    "sales": Decimal("0.00"),
-                    "expenses": Decimal("0.00"),
-                    "profit": Decimal("0.00"),
-                }
-                cursor += timedelta(days=1)
-
-        shop_compare[shop_key]["sales"] += entry.sales_value or Decimal("0.00")
-        shop_compare[shop_key]["expenses"] += entry.expenses or Decimal("0.00")
-        shop_compare[shop_key]["debts"] += entry.debts or Decimal("0.00")
-        shop_compare[shop_key]["mobile"] += entry.mobile_money_received
-        shop_compare[shop_key]["profit"] += entry.profit_or_loss or Decimal("0.00")
-
-        entry_key = entry.entry_date.isoformat()
-        shop_daily_data[shop_key][entry_key]["sales"] += entry.sales_value or Decimal("0.00")
-        shop_daily_data[shop_key][entry_key]["expenses"] += entry.expenses or Decimal("0.00")
-        shop_daily_data[shop_key][entry_key]["profit"] += entry.profit_or_loss or Decimal("0.00")
-
     general_stock_metrics = _calculate_stock_metrics(general_entries)
     general_total_sales = sum((entry.sales_value or Decimal("0.00") for entry in general_entries), Decimal("0.00"))
     general_total_expenses = sum((entry.expenses or Decimal("0.00") for entry in general_entries), Decimal("0.00"))
@@ -747,31 +685,6 @@ def _build_report_dataset(query_data):
     )
 
     chart_payload = {
-        "shopName": chart_shop.name if chart_shop else "No Shop",
-        "shopBarDate": str(bar_date),
-        "shopBarLabels": ["Sales", "Expenses", "Credit", "Cash", "Mobile", "Profit/Loss"],
-        "shopBarValues": [
-            float(day_sales),
-            float(day_expenses),
-            float(day_debts),
-            float(day_cash),
-            float(day_mobile),
-            float(day_profit),
-        ],
-        "trendLabels": list(shop_daily_points.keys()),
-        "trendSales": progressive_shop_sales,
-        "trendExpenses": progressive_shop_expenses,
-        "trendProfit": progressive_shop_profit,
-        "shopPieLabels": ["Sales", "Expenses", "Credit", "Cash", "Mobile", "Net Profit", "Net Loss"],
-        "shopPieValues": [
-            float(shop_sales_total),
-            float(shop_expenses_total),
-            float(shop_debts_total),
-            float(shop_cash_total),
-            float(shop_mobile_total),
-            float(shop_net_profit),
-            float(shop_net_loss),
-        ],
         "allCumulativeLabels": list(all_daily_points.keys()),
         "allCumulativeSales": cumulative_sales,
         "allCumulativeExpenses": cumulative_expenses,
@@ -797,91 +710,139 @@ def _build_report_dataset(query_data):
 
     chart_cards = []
 
-    if any(value != 0.0 for value in chart_payload["shopBarValues"]):
-        chart_cards.append(
-            {
-                "category": "Shop",
-                "title": f"{chart_payload['shopName']} Day Snapshot ({chart_payload['shopBarDate']})",
-                "chartType": "bar",
-                "labels": chart_payload["shopBarLabels"],
-                "datasets": [
-                    {
-                        "label": f"{chart_payload['shopName']} ({chart_payload['shopBarDate']})",
-                        "data": chart_payload["shopBarValues"],
-                        "backgroundColor": [
-                            "rgba(15, 118, 110, 0.75)",
-                            "rgba(180, 83, 9, 0.75)",
-                            "rgba(190, 24, 93, 0.75)",
-                            "rgba(30, 64, 175, 0.75)",
-                            "rgba(124, 58, 237, 0.75)",
-                            "rgba(22, 101, 52, 0.75)",
-                        ],
-                        "borderRadius": 8,
-                    }
-                ],
-            }
-        )
+    # --- Generate 3 chart cards for every shop that has data ---
+    for shop_name, shop_data in shops_chart_data.items():
+        s_entries = shop_data["entries"]
+        daily_points = shop_data["daily_points"]
+        date_labels = list(daily_points.keys())
 
-    if chart_payload["trendLabels"]:
-        chart_cards.append(
-            {
-                "category": "Shop",
-                "title": f"{chart_payload['shopName']} Historical Trend",
-                "chartType": "line",
-                "labels": chart_payload["trendLabels"],
-                "datasets": [
+        # Day Snapshot bar chart
+        day_entries = [e for e in s_entries if e.entry_date == bar_date]
+        if day_entries:
+            d_sales = sum((e.sales_value or Decimal("0.00") for e in day_entries), Decimal("0.00"))
+            d_expenses = sum((e.expenses or Decimal("0.00") for e in day_entries), Decimal("0.00"))
+            d_debts = sum((e.debts or Decimal("0.00") for e in day_entries), Decimal("0.00"))
+            d_cash = sum((e.cash_received or Decimal("0.00") for e in day_entries), Decimal("0.00"))
+            d_mobile = sum((e.mobile_money_received for e in day_entries), Decimal("0.00"))
+            d_profit = sum((e.profit_or_loss or Decimal("0.00") for e in day_entries), Decimal("0.00"))
+            bar_values = [
+                float(d_sales), float(d_expenses), float(d_debts),
+                float(d_cash), float(d_mobile), float(d_profit),
+            ]
+            if any(v != 0.0 for v in bar_values):
+                chart_cards.append(
                     {
-                        "label": "Sales",
-                        "data": chart_payload["trendSales"],
-                        "borderColor": "#0f766e",
-                        "backgroundColor": "rgba(15, 118, 110, 0.08)",
-                        "tension": 0.45,
-                        "fill": True,
-                    },
-                    {
-                        "label": "Expenses",
-                        "data": chart_payload["trendExpenses"],
-                        "borderColor": "#b45309",
-                        "backgroundColor": "rgba(180, 83, 9, 0.08)",
-                        "tension": 0.45,
-                        "fill": True,
-                    },
-                    {
-                        "label": "Profit/Loss",
-                        "data": chart_payload["trendProfit"],
-                        "borderColor": "#1d4ed8",
-                        "backgroundColor": "rgba(29, 78, 216, 0.08)",
-                        "tension": 0.45,
-                        "fill": True,
-                    },
-                ],
-            }
-        )
-
-    if any(value != 0.0 for value in chart_payload["shopPieValues"]):
-        chart_cards.append(
-            {
-                "category": "Shop",
-                "title": f"{chart_payload['shopName']} Cumulative Distribution",
-                "chartType": "pie",
-                "labels": chart_payload["shopPieLabels"],
-                "datasets": [
-                    {
-                        "label": chart_payload["shopName"],
-                        "data": chart_payload["shopPieValues"],
-                        "backgroundColor": [
-                            "rgba(15, 118, 110, 0.8)",
-                            "rgba(180, 83, 9, 0.8)",
-                            "rgba(190, 24, 93, 0.8)",
-                            "rgba(29, 78, 216, 0.8)",
-                            "rgba(124, 58, 237, 0.8)",
-                            "rgba(22, 163, 74, 0.8)",
-                            "rgba(127, 29, 29, 0.8)",
+                        "category": "Shop",
+                        "title": f"{shop_name} Day Snapshot ({bar_date})",
+                        "chartType": "bar",
+                        "labels": ["Sales", "Expenses", "Credit", "Cash", "Mobile", "Profit/Loss"],
+                        "datasets": [
+                            {
+                                "label": f"{shop_name} ({bar_date})",
+                                "data": bar_values,
+                                "backgroundColor": [
+                                    "rgba(15, 118, 110, 0.75)",
+                                    "rgba(180, 83, 9, 0.75)",
+                                    "rgba(190, 24, 93, 0.75)",
+                                    "rgba(30, 64, 175, 0.75)",
+                                    "rgba(124, 58, 237, 0.75)",
+                                    "rgba(22, 101, 52, 0.75)",
+                                ],
+                                "borderRadius": 8,
+                            }
                         ],
                     }
-                ],
-            }
-        )
+                )
+
+        # Cumulative Trend line chart
+        prog_sales = []
+        prog_expenses = []
+        prog_profit = []
+        r_sales = Decimal("0.00")
+        r_expenses = Decimal("0.00")
+        r_profit = Decimal("0.00")
+        for point in daily_points.values():
+            r_sales += point["sales"]
+            r_expenses += point["expenses"]
+            r_profit += point["profit"]
+            prog_sales.append(float(r_sales))
+            prog_expenses.append(float(r_expenses))
+            prog_profit.append(float(r_profit))
+
+        if any(v != 0.0 for v in prog_sales + prog_expenses + prog_profit):
+            chart_cards.append(
+                {
+                    "category": "Shop",
+                    "title": f"{shop_name} Cumulative Trend",
+                    "chartType": "line",
+                    "labels": date_labels,
+                    "datasets": [
+                        {
+                            "label": "Sales",
+                            "data": prog_sales,
+                            "borderColor": "#0f766e",
+                            "backgroundColor": "rgba(15, 118, 110, 0.08)",
+                            "tension": 0.45,
+                            "fill": True,
+                        },
+                        {
+                            "label": "Expenses",
+                            "data": prog_expenses,
+                            "borderColor": "#b45309",
+                            "backgroundColor": "rgba(180, 83, 9, 0.08)",
+                            "tension": 0.45,
+                            "fill": True,
+                        },
+                        {
+                            "label": "Profit/Loss",
+                            "data": prog_profit,
+                            "borderColor": "#1d4ed8",
+                            "backgroundColor": "rgba(29, 78, 216, 0.08)",
+                            "tension": 0.45,
+                            "fill": True,
+                        },
+                    ],
+                }
+            )
+
+        # Cumulative Distribution pie chart
+        s_stock = _calculate_stock_metrics(s_entries)
+        s_sales = sum((e.sales_value or Decimal("0.00") for e in s_entries), Decimal("0.00"))
+        s_expenses = sum((e.expenses or Decimal("0.00") for e in s_entries), Decimal("0.00"))
+        s_debts = sum((e.debts or Decimal("0.00") for e in s_entries), Decimal("0.00"))
+        s_cash = sum((e.cash_received or Decimal("0.00") for e in s_entries), Decimal("0.00"))
+        s_mobile = sum((e.mobile_money_received for e in s_entries), Decimal("0.00"))
+        s_profit_total = s_sales - s_stock["stock_consumed"] - s_expenses
+        s_net_profit = s_profit_total if s_profit_total > Decimal("0.00") else Decimal("0.00")
+        s_net_loss = abs(s_profit_total) if s_profit_total < Decimal("0.00") else Decimal("0.00")
+        pie_values = [
+            float(s_sales), float(s_expenses), float(s_debts),
+            float(s_cash), float(s_mobile), float(s_net_profit), float(s_net_loss),
+        ]
+        if any(v != 0.0 for v in pie_values):
+            chart_cards.append(
+                {
+                    "category": "Shop",
+                    "title": f"{shop_name} Cumulative Distribution",
+                    "chartType": "pie",
+                    "labels": ["Sales", "Expenses", "Credit", "Cash", "Mobile", "Net Profit", "Net Loss"],
+                    "datasets": [
+                        {
+                            "label": shop_name,
+                            "data": pie_values,
+                            "backgroundColor": [
+                                "rgba(15, 118, 110, 0.8)",
+                                "rgba(180, 83, 9, 0.8)",
+                                "rgba(190, 24, 93, 0.8)",
+                                "rgba(29, 78, 216, 0.8)",
+                                "rgba(124, 58, 237, 0.8)",
+                                "rgba(22, 163, 74, 0.8)",
+                                "rgba(127, 29, 29, 0.8)",
+                            ],
+                        }
+                    ],
+                }
+            )
 
     if chart_payload["allCumulativeLabels"]:
         chart_cards.append(
@@ -951,59 +912,6 @@ def _build_report_dataset(query_data):
             }
         )
 
-    for shop_name in sorted(shop_daily_data.keys()):
-        daily_points = shop_daily_data[shop_name]
-        progressive_sales = []
-        progressive_expenses = []
-        progressive_profit = []
-        running_sales = Decimal("0.00")
-        running_expenses = Decimal("0.00")
-        running_profit = Decimal("0.00")
-
-        for point in daily_points.values():
-            running_sales += point["sales"]
-            running_expenses += point["expenses"]
-            running_profit += point["profit"]
-            progressive_sales.append(float(running_sales))
-            progressive_expenses.append(float(running_expenses))
-            progressive_profit.append(float(running_profit))
-
-        if any(val != 0.0 for val in progressive_sales + progressive_expenses + progressive_profit):
-            chart_cards.append(
-                {
-                    "category": "Shop",
-                    "title": f"{shop_name} Trend ({start} to {end})",
-                    "chartType": "line",
-                    "labels": list(daily_points.keys()),
-                    "datasets": [
-                        {
-                            "label": "Sales",
-                            "data": progressive_sales,
-                            "borderColor": "#0f766e",
-                            "backgroundColor": "rgba(15, 118, 110, 0.08)",
-                            "tension": 0.45,
-                            "fill": True,
-                        },
-                        {
-                            "label": "Expenses",
-                            "data": progressive_expenses,
-                            "borderColor": "#b45309",
-                            "backgroundColor": "rgba(180, 83, 9, 0.08)",
-                            "tension": 0.45,
-                            "fill": True,
-                        },
-                        {
-                            "label": "Profit/Loss",
-                            "data": progressive_profit,
-                            "borderColor": "#1d4ed8",
-                            "backgroundColor": "rgba(29, 78, 216, 0.08)",
-                            "tension": 0.45,
-                            "fill": True,
-                        },
-                    ],
-                }
-            )
-
     if any(value != 0.0 for value in chart_payload["generalPieValues"]):
         chart_cards.append(
             {
@@ -1039,8 +947,6 @@ def _build_report_dataset(query_data):
         "period": period,
         "selected_date": selected_date,
         "filter_mode": filter_mode,
-        "shop_chart_title": f"{chart_payload['shopName']} Historical Trend",
-        "shop_bar_title": f"{chart_payload['shopName']} Day Snapshot ({chart_payload['shopBarDate']})",
         "totals": totals,
         "stock_consumed": stock_consumed,
         "total_sales": total_sales,
