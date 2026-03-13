@@ -127,25 +127,8 @@ class DailyEntry(models.Model):
 
 
 class JengaApiSettings(models.Model):
-    HTTP_GET = "GET"
-    HTTP_POST = "POST"
-    HTTP_METHOD_CHOICES = [(HTTP_GET, "GET"), (HTTP_POST, "POST")]
-
     provider_name = models.CharField(max_length=50, default="Jenga")
     account_reference = models.CharField(max_length=100, unique=True)
-    auth_endpoint = models.URLField(blank=True)
-    balance_endpoint = models.URLField()
-    client_id = models.CharField(max_length=255, blank=True)
-    client_secret = models.CharField(max_length=255, blank=True)
-    api_key = models.CharField(max_length=255, blank=True)
-    api_token = models.CharField(max_length=255, blank=True)
-    grant_type = models.CharField(max_length=50, default="client_credentials")
-    scope = models.CharField(max_length=255, blank=True)
-    balance_http_method = models.CharField(
-        max_length=10,
-        choices=HTTP_METHOD_CHOICES,
-        default=HTTP_POST,
-    )
     balance_field_path = models.CharField(max_length=255, default="balance")
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -154,10 +137,6 @@ class JengaApiSettings(models.Model):
 
     def __str__(self):
         return f"{self.provider_name} - {self.account_reference}"
-
-    @property
-    def uses_static_token(self):
-        return bool(self.api_token)
 
     @property
     def is_configured(self):

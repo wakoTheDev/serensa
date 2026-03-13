@@ -1,3 +1,4 @@
+import os
 from collections import OrderedDict
 from datetime import datetime, time, timedelta
 from decimal import Decimal
@@ -8,7 +9,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.views import LoginView
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Sum
-from django.http import HttpResponse, HttpResponseForbidden
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from openpyxl import Workbook
@@ -26,7 +27,7 @@ from .forms import (
     UserRoleUpdateForm,
 )
 from .models import BankBalanceSnapshot, DailyEntry, JengaApiSettings, Shop, UserProfile
-from .services import fetch_jenga_equity_balance
+from .services import fetch_and_store_jenga_equity_balance
 
 User = get_user_model()
 
@@ -1159,19 +1160,39 @@ def export_report_pdf(request):
 @user_passes_test(_is_admin)
 def fetch_balance(request):
     try:
-        result = fetch_jenga_equity_balance()
+        result, _snapshot = fetch_and_store_jenga_equity_balance()
         if result["ok"]:
-            BankBalanceSnapshot.objects.create(
-                provider=result["provider"],
-                account_reference=result["account_reference"],
-                balance=result["balance"],
-                raw_response=result["raw"],
-            )
             messages.success(request, f"Balance fetched: {result['balance']}")
     except Exception as exc:  # pylint: disable=broad-except
         messages.error(request, f"Failed to fetch balance: {exc}")
 
     return redirect("report_view")
+
+
+def cron_fetch_balance(request):
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "Method not allowed"}, status=405)
+
+    cron_secret = os.getenv("CRON_SECRET")
+    if cron_secret:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header != f"Bearer {cron_secret}":
+            return JsonResponse({"ok": False, "error": "Unauthorized"}, status=401)
+
+    try:
+        result, snapshot = fetch_and_store_jenga_equity_balance()
+        return JsonResponse(
+            {
+                "ok": result["ok"],
+                "provider": snapshot.provider,
+                "account_reference": snapshot.account_reference,
+                "balance": str(snapshot.balance),
+                "fetched_at": snapshot.fetched_at.isoformat(),
+            },
+            status=200,
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
 
 
 @login_required

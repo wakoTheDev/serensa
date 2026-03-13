@@ -142,30 +142,44 @@ http://127.0.0.1:8000/accounts/login/
 
 Configure these for live balance fetch:
 
-- `JENGA_BALANCE_ENDPOINT`
-- `JENGA_API_TOKEN` (optional if using static bearer token)
-- `EQUITY_ACCOUNT_REF`
-
-For OAuth token flow:
-
-- `JENGA_AUTH_ENDPOINT`
-- `JENGA_CLIENT_ID`
-- `JENGA_CLIENT_SECRET`
+- `JENGA_BALANCE_ENDPOINT` (optional, default `https://uat.finserve.africa/v3-apis/account-api/v3.0/accounts/balances`)
+- `JENGA_API_KEY` (sent as `Api-Key` during merchant authentication)
+- `JENGA_MERCHANT_CODE`
+- `JENGA_CONSUMER_SECRET`
+- `JENGA_MERCHANT_AUTH_ENDPOINT` (optional, default `https://uat.finserve.africa/authentication/api/v3/authenticate/merchant`)
 
 Optional advanced settings:
 
-- `JENGA_GRANT_TYPE` (default: `client_credentials`)
-- `JENGA_SCOPE`
-- `JENGA_API_KEY` (sent as `X-API-Key`)
-- `JENGA_BALANCE_HTTP_METHOD` (`GET` or `POST`, default `POST`)
-- `JENGA_BALANCE_FIELD_PATH` (dot-path to balance in JSON, default `balance`)
+- `JENGA_BALANCE_FIELD_PATH` (dot-path override for non-standard JSON responses)
+- `JENGA_BALANCE_TYPE` (for Finserve `data.balances[]`, default `Available`; e.g. `Current`)
 - `JENGA_PROVIDER_NAME` (default `Jenga`)
+
+For balance signature generation (RSA/SHA256):
+
+- `JENGA_PRIVATE_KEY` (recommended on Vercel; PEM text, supports `\\n` escaped newlines)
+- `JENGA_PRIVATE_KEY_PATH` (optional fallback path, default `privatekey.pem`)
+- `JENGA_SIGNATURE_COUNTRY_CODE` (default `KE`; message = `<countryCode><account_reference>`)
+- `JENGA_SIGNATURE_HEADER` (default `signature`)
+
+Balance request format used by default:
+
+- Method: `GET`
+- URL: `https://uat.finserve.africa/v3-apis/account-api/v3.0/accounts/balances/<countryCode>/<account_reference>`
+- Headers:
+	- `Authorization: Bearer <token>`
+	- `signature: <generated_signature>`
+
+Automatic daily fetch:
+
+- Route: `/cron/fetch-balance/`
+- Vercel cron schedule: `0 19 * * *` (19:00 UTC = 10:00 PM Kenya/EAT)
+- Set `CRON_SECRET` in Vercel so only authorized cron calls can trigger this route.
+- Each successful fetch is saved to `BankBalanceSnapshot` with fetched time.
+- Manual fetch button still works via `/reports/fetch-balance/`.
 
 Optional for local mock mode:
 
-- `JENGA_MOCK_BALANCE` (default: `0.00`)
-
-If live endpoint/token are missing, the app uses mock response mode.
+- (No mock mode env var is active in current implementation.)
 
 ## Key Routes
 

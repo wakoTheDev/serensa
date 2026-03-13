@@ -17,6 +17,7 @@ urlpatterns = [
     path("settings/jenga/", views.jenga_settings_view, name="jenga_settings"),
     path("reports/", views.report_view, name="report_view"),
     path("reports/fetch-balance/", views.fetch_balance, name="fetch_balance"),
+    path("cron/fetch-balance/", views.cron_fetch_balance, name="cron_fetch_balance"),
     path("reports/export/excel/", views.export_report_excel, name="export_report_excel"),
     path("reports/export/pdf/", views.export_report_pdf, name="export_report_pdf"),
     path("users/", views.user_list, name="user_list"),
