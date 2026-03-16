@@ -104,35 +104,19 @@
 <section class="panel">
     <h3>Monthly Profit</h3>
     <p class="muted">{{ monthly_profit_start }} to {{ monthly_profit_end }}</p>
-    <div class="table-wrap">
-        <table class="ledger-table">
-            <thead>
-                <tr>
-                    <th>Shop</th><th>Type</th><th>Sales Volume</th><th>Expenses Volume</th><th>Stock Consumed</th><th>Closing Stock</th><th>Profit</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in monthly_profit_by_shop %}
-                <tr>
-                    <td>{{ item.shop.name }}</td>
-                    <td>{{ item.shop.get_shop_type_display }}</td>
-                    <td>{{ item.sales }}</td>
-                    <td>{{ item.expenses }}</td>
-                    <td>{{ item.stock_consumed }}</td>
-                    <td>{{ item.closing_stock }}</td>
-                    <td>{{ item.profit }}</td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="7">No monthly records available.</td></tr>
-                {% endfor %}
-            </tbody>
-            <tfoot>
-                <tr>
-                    <th colspan="6">Business Monthly Profit</th>
-                    <th>{{ monthly_business_profit }}</th>
-                </tr>
-            </tfoot>
-        </table>
+    <div class="chip-row">
+        <span class="chip"><strong>Business Monthly Profit:</strong> {{ monthly_business_profit }}</span>
+    </div>
+    <div class="report-metric-grid" aria-label="Monthly Profit By Shop">
+        {% for item in monthly_profit_by_shop %}
+        <article class="metric-card {% if item.profit < 0 %}metric-card-loss{% else %}metric-card-profit{% endif %}">
+            <p class="metric-label">{{ item.shop.name }} ({{ item.shop.get_shop_type_display }})</p>
+            <p class="metric-value">{{ item.profit }}</p>
+            <p class="muted">Sales {{ item.sales }} | Expenses {{ item.expenses }} | Remaining {{ item.closing_stock }}</p>
+        </article>
+        {% empty %}
+        <p class="muted">No monthly records available.</p>
+        {% endfor %}
     </div>
 </section>
 

@@ -615,9 +615,6 @@ def _build_report_dataset(query_data):
     total_mobile_money = sum((entry.mobile_money_received for entry in normalized_entries), Decimal("0.00"))
     paid_sales_total = total_sales - total_debts
     stock_consumed = stock_metrics["stock_consumed"]
-    profit_or_loss = total_sales - stock_consumed - total_expenses
-    net_profit = profit_or_loss if profit_or_loss > Decimal("0.00") else Decimal("0.00")
-    net_loss = abs(profit_or_loss) if profit_or_loss < Decimal("0.00") else Decimal("0.00")
     balance_metrics = _build_balance_metrics(start, end)
 
     totals = {
@@ -1041,7 +1038,6 @@ def _build_report_dataset(query_data):
         "bank_received": balance_metrics["bank_received"],
         "bank_has_delta": balance_metrics["has_delta"],
         "balance": balance_metrics["closing_snapshot"] or balance_metrics["latest_balance"],
-        "profit_or_loss": profit_or_loss,
         "monthly_profit_start": monthly_start,
         "monthly_profit_end": monthly_end,
         "monthly_business_profit": monthly_business_profit,
