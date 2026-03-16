@@ -2,29 +2,28 @@
 
 {% block content %}
 <section class="panel">
-        <h2>{{ form_title }}</h2>
-        <p>{{ form_subtitle }}</p>
-    {% if manual_opening_required %}
-    <!-- <p><strong>Opening Stock:</strong> <span class="muted">First entry for this shop - enter opening stock manually.</span></p> -->
-    {% else %}
-    <!-- <p><strong>Opening Stock:</strong> {{ opening_stock_value }} <span class="muted">(auto-filled from the most recent closing stock)</span></p> -->
-    {% endif %}
-    <!-- <p class="muted"><strong>Accuracy Tip:</strong> Enter any two among <em>Credit</em>, <em>Cash</em>, and <em>Mobile Money</em>. The remaining one is auto-calculated from Total Sales.</p> -->
-        <p>
-                <strong>Mode:</strong>
-                {% if is_edit_mode %}
-                        Editing Existing Record
-                {% else %}
-                        New Entry
-                {% endif %}
-        </p>
+    <h2>{{ form_title }}</h2>
     <form method="post" class="entry-form-grid">
         {% csrf_token %}
         {% if next_url %}
         <input type="hidden" name="next" value="{{ next_url }}">
         {% endif %}
-        {{ form.as_p }}
-                <button class="btn" type="submit">{{ submit_label }}</button>
+
+    {% if form.non_field_errors %}
+    <div class="filter-errors">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <p>{{ form.shop.label_tag }}{{ form.shop }}{{ form.shop.errors }}</p>
+    <p>{{ form.entry_date.label_tag }}{{ form.entry_date }}{{ form.entry_date.errors }}</p>
+    <p>{{ form.sales_value.label_tag }}{{ form.sales_value }}{{ form.sales_value.errors }}</p>
+    <p>{{ form.debts.label_tag }}{{ form.debts }}{{ form.debts.errors }}</p>
+    <p>{{ form.stock_added.label_tag }}{{ form.stock_added }}{{ form.stock_added.errors }}</p>
+    <p>{{ form.opening_stock.label_tag }}{{ form.opening_stock }}{{ form.opening_stock.errors }}</p>
+    <p>{{ form.closing_stock.label_tag }}{{ form.closing_stock }}{{ form.closing_stock.errors }}</p>
+    <p>{{ form.expenses.label_tag }}{{ form.expenses }}{{ form.expenses.errors }}</p>
+    <p>{{ form.notes.label_tag }}{{ form.notes }}{{ form.notes.errors }}</p>
+
+    <button class="btn" type="submit">{{ submit_label }}</button>
     </form>
 </section>
 
