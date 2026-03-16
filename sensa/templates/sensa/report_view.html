@@ -24,24 +24,9 @@
     </div>
     <form method="get" class="report-filter-grid" aria-label="Report Filters">
         <div class="filter-field">
-            {{ form.period.label_tag }}
-            {{ form.period }}
-            {{ form.period.errors }}
-        </div>
-        <div class="filter-field">
-            {{ form.date.label_tag }}
+            <label for="id_date">Month</label>
             {{ form.date }}
             {{ form.date.errors }}
-        </div>
-        <div class="filter-field">
-            {{ form.start_date.label_tag }}
-            {{ form.start_date }}
-            {{ form.start_date.errors }}
-        </div>
-        <div class="filter-field">
-            {{ form.end_date.label_tag }}
-            {{ form.end_date }}
-            {{ form.end_date.errors }}
         </div>
         <div class="filter-field">
             {{ form.shop.label_tag }}
@@ -65,7 +50,7 @@
     </form>
     <div class="chip-row report-meta-row">
         <span class="chip">Period: {{ start }} to {{ end }}</span>
-        <span class="chip">View: {{ filter_mode }}</span>
+        <span class="chip">View: Monthly</span>
         {% if selected_shop %}
         <span class="chip">Shop: {{ selected_shop.name }}</span>
         {% else %}
@@ -98,6 +83,10 @@
             <p class="metric-value">{{ totals.stock_added|default:0 }}</p>
         </article>
         <article class="metric-card">
+            <p class="metric-label">Stock Handled</p>
+            <p class="metric-value">{{ totals.stock_handled|default:0 }}</p>
+        </article>
+        <article class="metric-card">
             <p class="metric-label">Closing Stock</p>
             <p class="metric-value">{{ totals.closing_stock|default:0 }}</p>
         </article>
@@ -105,10 +94,87 @@
             <p class="metric-label">Expenses</p>
             <p class="metric-value">{{ totals.expenses|default:0 }}</p>
         </article>
-        <article class="metric-card metric-card-highlight {% if profit_or_loss < 0 %}metric-card-loss{% else %}metric-card-profit{% endif %}">
-            <p class="metric-label">Profit/Loss</p>
-            <p class="metric-value">{{ profit_or_loss }}</p>
+        <article class="metric-card metric-card-highlight {% if monthly_business_profit < 0 %}metric-card-loss{% else %}metric-card-profit{% endif %}">
+            <p class="metric-label">Monthly Profit</p>
+            <p class="metric-value">{{ monthly_business_profit }}</p>
         </article>
+    </div>
+</section>
+
+<section class="panel">
+    <h3>Monthly Profit</h3>
+    <p class="muted">{{ monthly_profit_start }} to {{ monthly_profit_end }}</p>
+    <div class="table-wrap">
+        <table class="ledger-table">
+            <thead>
+                <tr>
+                    <th>Shop</th><th>Type</th><th>Sales Volume</th><th>Expenses Volume</th><th>Stock Consumed</th><th>Closing Stock</th><th>Profit</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in monthly_profit_by_shop %}
+                <tr>
+                    <td>{{ item.shop.name }}</td>
+                    <td>{{ item.shop.get_shop_type_display }}</td>
+                    <td>{{ item.sales }}</td>
+                    <td>{{ item.expenses }}</td>
+                    <td>{{ item.stock_consumed }}</td>
+                    <td>{{ item.closing_stock }}</td>
+                    <td>{{ item.profit }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7">No monthly records available.</td></tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th colspan="6">Business Monthly Profit</th>
+                    <th>{{ monthly_business_profit }}</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
+    <h3>Stock Tracking</h3>
+    <div class="table-wrap">
+        <table class="ledger-table">
+            <thead>
+                <tr>
+                    <th>Shop</th><th>Type</th><th>From</th><th>To</th><th>Existing Stock</th><th>Added Stock</th><th>Stock Handled</th><th>Closing Stock</th><th>Stock Consumed</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for stock in stock_by_shop %}
+                <tr>
+                    <td>{{ stock.shop.name }}</td>
+                    <td>{{ stock.shop.get_shop_type_display }}</td>
+                    <td>{{ stock.first_date }}</td>
+                    <td>{{ stock.last_date }}</td>
+                    <td>{{ stock.opening_stock }}</td>
+                    <td>{{ stock.stock_added }}</td>
+                    <td>{{ stock.opening_stock|add:stock.stock_added }}</td>
+                    <td>{{ stock.closing_stock }}</td>
+                    <td>{{ stock.stock_consumed }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9">No stock records in selected period.</td></tr>
+                {% endfor %}
+            </tbody>
+            {% if stock_by_shop %}
+            <tfoot>
+                <tr>
+                    <th colspan="4">Totals</th>
+                    <th>{{ totals.opening_stock|default:0 }}</th>
+                    <th>{{ totals.stock_added|default:0 }}</th>
+                    <th>{{ totals.stock_handled|default:0 }}</th>
+                    <th>{{ totals.closing_stock|default:0 }}</th>
+                    <th>{{ stock_consumed|default:0 }}</th>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
     </div>
 </section>
 
@@ -140,7 +206,7 @@
         <table class="ledger-table">
             <thead>
                 <tr>
-                    <th>Date</th><th>Shop</th><th>Type</th><th>Existing Stock</th><th>Added Stock</th><th>Expenses</th><th>Sales</th><th>Debts</th><th>Closing Stock</th><th>Other Expenses</th><th>P/L</th><th>Actions</th>
+                    <th>Date</th><th>Shop</th><th>Type</th><th>Existing Stock</th><th>Added Stock</th><th>Expenses</th><th>Sales</th><th>Debts</th><th>Closing Stock</th><th>Other Expenses</th><th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -156,7 +222,6 @@
                     <td>{{ entry.debts }}</td>
                     <td>{{ entry.closing_stock }}</td>
                     <td>{{ entry.notes|default:"-" }}</td>
-                    <td>{{ entry.profit_or_loss }}</td>
                     <td class="ledger-actions-cell">
                         <div class="ledger-actions-wrap">
                             <a class="btn btn-alt ledger-action-btn" href="{% url 'entry_admin_edit' entry.id %}?next={{ request.get_full_path|urlencode }}">Edit</a>
@@ -165,7 +230,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="12">No records in selected period.</td></tr>
+                <tr><td colspan="11">No records in selected period.</td></tr>
                 {% endfor %}
             </tbody>
             {% if entries %}
@@ -179,7 +244,6 @@
                     <th>{{ totals.debts|default:0 }}</th>
                     <th>{{ totals.closing_stock|default:0 }}</th>
                     <th>-</th>
-                    <th>{{ profit_or_loss }}</th>
                     <th></th>
                 </tr>
             </tfoot>

@@ -463,13 +463,35 @@ def _get_previous_closing_stock(shop, entry_date, current_entry=None):
     return None
 
 
-def _calculate_stock_metrics(entries):
-    per_shop = OrderedDict()
-
+def _latest_entries_by_shop_day(entries):
+    unique_by_shop_day = {}
     for entry in entries:
+        key = (entry.shop_id, entry.entry_date)
+        existing = unique_by_shop_day.get(key)
+        if existing is None:
+            unique_by_shop_day[key] = entry
+            continue
+
+        if entry.updated_at and existing.updated_at and entry.updated_at > existing.updated_at:
+            unique_by_shop_day[key] = entry
+
+    return sorted(
+        unique_by_shop_day.values(),
+        key=lambda item: (item.shop_id, item.entry_date, item.updated_at),
+    )
+
+
+def _calculate_stock_metrics(entries):
+    # Keep one row per (shop, day) using the most recently updated entry.
+    # This protects stock totals from accidental duplicate daily rows.
+    normalized_entries = _latest_entries_by_shop_day(entries)
+
+    per_shop = OrderedDict()
+    for entry in normalized_entries:
         state = per_shop.setdefault(
             entry.shop_id,
             {
+                "shop": entry.shop,
                 "opening": entry.opening_stock or Decimal("0.00"),
                 "first_date": entry.entry_date,
                 "closing": entry.closing_stock or Decimal("0.00"),
@@ -477,23 +499,45 @@ def _calculate_stock_metrics(entries):
                 "added": Decimal("0.00"),
             },
         )
+
         if entry.entry_date < state["first_date"]:
             state["first_date"] = entry.entry_date
             state["opening"] = entry.opening_stock or Decimal("0.00")
+
         if entry.entry_date > state["last_date"]:
             state["last_date"] = entry.entry_date
             state["closing"] = entry.closing_stock or Decimal("0.00")
+        elif entry.entry_date == state["last_date"]:
+            state["closing"] = entry.closing_stock or Decimal("0.00")
+
         state["added"] += entry.stock_added or Decimal("0.00")
 
     opening_total = sum((state["opening"] for state in per_shop.values()), Decimal("0.00"))
     added_total = sum((state["added"] for state in per_shop.values()), Decimal("0.00"))
     closing_total = sum((state["closing"] for state in per_shop.values()), Decimal("0.00"))
 
+    by_shop = []
+    for state in per_shop.values():
+        consumed = state["opening"] + state["added"] - state["closing"]
+        by_shop.append(
+            {
+                "shop": state["shop"],
+                "opening_stock": state["opening"],
+                "stock_added": state["added"],
+                "closing_stock": state["closing"],
+                "stock_consumed": consumed,
+                "first_date": state["first_date"],
+                "last_date": state["last_date"],
+            }
+        )
+
     return {
         "opening_stock": opening_total,
         "stock_added": added_total,
         "closing_stock": closing_total,
+        "stock_handled": opening_total + added_total,
         "stock_consumed": opening_total + added_total - closing_total,
+        "by_shop": by_shop,
     }
 
 
@@ -535,26 +579,21 @@ def _build_report_dataset(query_data):
 
     today = timezone.localdate()
     if form.is_bound and form.is_valid():
-        period = form.cleaned_data.get("period") or "daily"
         selected_date = form.cleaned_data.get("date") or today
         start_date = form.cleaned_data.get("start_date")
         end_date = form.cleaned_data.get("end_date")
 
-        if start_date or end_date:
-            start = start_date or end_date
-            end = end_date or start_date
-            filter_mode = "date_range"
-        else:
-            start, end = _date_range(period, selected_date)
-            filter_mode = "period"
+        month_anchor = end_date or start_date or selected_date
+        period = "monthly"
+        start, end = _date_range("monthly", month_anchor)
+        filter_mode = "monthly"
         selected_shop = form.cleaned_data.get("shop")
     else:
-        period = "historical"
+        period = "monthly"
         selected_date = today
-        start = entries_qs.order_by("entry_date").values_list("entry_date", flat=True).first() or today
-        end = today
+        start, end = _date_range("monthly", selected_date)
         selected_shop = None
-        filter_mode = "historical"
+        filter_mode = "monthly"
 
     entries_in_range_qs = entries_qs.filter(entry_date__range=(start, end)).order_by("entry_date", "shop__name")
     entries_qs = entries_in_range_qs
@@ -565,13 +604,15 @@ def _build_report_dataset(query_data):
     # while `general_entries` always represent all shops in the selected date window.
     entries = list(entries_qs)
     general_entries = list(entries_in_range_qs)
+    normalized_entries = _latest_entries_by_shop_day(entries)
+    normalized_general_entries = _latest_entries_by_shop_day(general_entries)
 
-    stock_metrics = _calculate_stock_metrics(entries)
-    total_sales = sum((entry.sales_value or Decimal("0.00") for entry in entries), Decimal("0.00"))
-    total_expenses = sum((entry.expenses or Decimal("0.00") for entry in entries), Decimal("0.00"))
-    total_debts = sum((entry.debts or Decimal("0.00") for entry in entries), Decimal("0.00"))
-    total_cash = sum((entry.cash_received or Decimal("0.00") for entry in entries), Decimal("0.00"))
-    total_mobile_money = sum((entry.mobile_money_received for entry in entries), Decimal("0.00"))
+    stock_metrics = _calculate_stock_metrics(normalized_entries)
+    total_sales = sum((entry.sales_value or Decimal("0.00") for entry in normalized_entries), Decimal("0.00"))
+    total_expenses = sum((entry.expenses or Decimal("0.00") for entry in normalized_entries), Decimal("0.00"))
+    total_debts = sum((entry.debts or Decimal("0.00") for entry in normalized_entries), Decimal("0.00"))
+    total_cash = sum((entry.cash_received or Decimal("0.00") for entry in normalized_entries), Decimal("0.00"))
+    total_mobile_money = sum((entry.mobile_money_received for entry in normalized_entries), Decimal("0.00"))
     paid_sales_total = total_sales - total_debts
     stock_consumed = stock_metrics["stock_consumed"]
     profit_or_loss = total_sales - stock_consumed - total_expenses
@@ -582,6 +623,7 @@ def _build_report_dataset(query_data):
     totals = {
         "opening_stock": stock_metrics["opening_stock"],
         "stock_added": stock_metrics["stock_added"],
+        "stock_handled": stock_metrics["stock_handled"],
         "expenses": total_expenses,
         "sales_value": total_sales,
         "debts": total_debts,
@@ -591,9 +633,46 @@ def _build_report_dataset(query_data):
         "paid_sales": paid_sales_total,
     }
 
-    bar_date = selected_date if filter_mode == "period" else end
-    if filter_mode == "historical":
-        bar_date = today
+    # Monthly profit uses monthly stock movement + sales volume + expense volume.
+    monthly_start, monthly_end = _date_range("monthly", end)
+    monthly_entries = _latest_entries_by_shop_day(
+        list(
+            DailyEntry.objects.select_related("shop").filter(
+                entry_date__range=(monthly_start, monthly_end)
+            )
+        )
+    )
+    monthly_stock_metrics = _calculate_stock_metrics(monthly_entries)
+    monthly_sales = sum((entry.sales_value or Decimal("0.00") for entry in monthly_entries), Decimal("0.00"))
+    monthly_expenses = sum((entry.expenses or Decimal("0.00") for entry in monthly_entries), Decimal("0.00"))
+    monthly_business_profit = monthly_sales - monthly_stock_metrics["stock_consumed"] - monthly_expenses
+
+    monthly_sales_by_shop = {}
+    monthly_expenses_by_shop = {}
+    for entry in monthly_entries:
+        monthly_sales_by_shop.setdefault(entry.shop_id, Decimal("0.00"))
+        monthly_expenses_by_shop.setdefault(entry.shop_id, Decimal("0.00"))
+        monthly_sales_by_shop[entry.shop_id] += entry.sales_value or Decimal("0.00")
+        monthly_expenses_by_shop[entry.shop_id] += entry.expenses or Decimal("0.00")
+
+    monthly_profit_by_shop = []
+    for stock_row in monthly_stock_metrics["by_shop"]:
+        shop_id = stock_row["shop"].id
+        shop_sales = monthly_sales_by_shop.get(shop_id, Decimal("0.00"))
+        shop_expenses = monthly_expenses_by_shop.get(shop_id, Decimal("0.00"))
+        shop_profit = shop_sales - stock_row["stock_consumed"] - shop_expenses
+        monthly_profit_by_shop.append(
+            {
+                "shop": stock_row["shop"],
+                "sales": shop_sales,
+                "expenses": shop_expenses,
+                "stock_consumed": stock_row["stock_consumed"],
+                "closing_stock": stock_row["closing_stock"],
+                "profit": shop_profit,
+            }
+        )
+
+    bar_date = end
 
     # --- Per-shop chart data built from `entries` (respects shop filter) ---
     shops_chart_data = OrderedDict()
@@ -629,7 +708,7 @@ def _build_report_dataset(query_data):
 
     shop_compare = OrderedDict()
 
-    for entry in general_entries:
+    for entry in normalized_general_entries:
         key = entry.entry_date.isoformat()
         all_daily_points[key]["sales"] += entry.sales_value or Decimal("0.00")
         all_daily_points[key]["expenses"] += entry.expenses or Decimal("0.00")
@@ -670,12 +749,12 @@ def _build_report_dataset(query_data):
         cumulative_debts.append(float(running_debts_all))
         cumulative_profit.append(float(running_profit_all))
 
-    general_stock_metrics = _calculate_stock_metrics(general_entries)
-    general_total_sales = sum((entry.sales_value or Decimal("0.00") for entry in general_entries), Decimal("0.00"))
-    general_total_expenses = sum((entry.expenses or Decimal("0.00") for entry in general_entries), Decimal("0.00"))
-    general_total_debts = sum((entry.debts or Decimal("0.00") for entry in general_entries), Decimal("0.00"))
-    general_total_cash = sum((entry.cash_received or Decimal("0.00") for entry in general_entries), Decimal("0.00"))
-    general_total_mobile = sum((entry.mobile_money_received for entry in general_entries), Decimal("0.00"))
+    general_stock_metrics = _calculate_stock_metrics(normalized_general_entries)
+    general_total_sales = sum((entry.sales_value or Decimal("0.00") for entry in normalized_general_entries), Decimal("0.00"))
+    general_total_expenses = sum((entry.expenses or Decimal("0.00") for entry in normalized_general_entries), Decimal("0.00"))
+    general_total_debts = sum((entry.debts or Decimal("0.00") for entry in normalized_general_entries), Decimal("0.00"))
+    general_total_cash = sum((entry.cash_received or Decimal("0.00") for entry in normalized_general_entries), Decimal("0.00"))
+    general_total_mobile = sum((entry.mobile_money_received for entry in normalized_general_entries), Decimal("0.00"))
     general_profit_or_loss = (
         general_total_sales - general_stock_metrics["stock_consumed"] - general_total_expenses
     )
@@ -952,6 +1031,7 @@ def _build_report_dataset(query_data):
         "selected_date": selected_date,
         "filter_mode": filter_mode,
         "totals": totals,
+        "stock_by_shop": stock_metrics["by_shop"],
         "stock_consumed": stock_consumed,
         "total_sales": total_sales,
         "paid_sales_total": paid_sales_total,
@@ -962,6 +1042,10 @@ def _build_report_dataset(query_data):
         "bank_has_delta": balance_metrics["has_delta"],
         "balance": balance_metrics["closing_snapshot"] or balance_metrics["latest_balance"],
         "profit_or_loss": profit_or_loss,
+        "monthly_profit_start": monthly_start,
+        "monthly_profit_end": monthly_end,
+        "monthly_business_profit": monthly_business_profit,
+        "monthly_profit_by_shop": monthly_profit_by_shop,
         "chart_payload": chart_payload,
         "chart_cards_count": len(chart_cards),
     }
@@ -1013,11 +1097,12 @@ def export_report_excel(request):
     sheet.append([])
     sheet.append(["Total Existing Stock", float(dataset["totals"]["opening_stock"])])
     sheet.append(["Total Added Stock", float(dataset["totals"]["stock_added"])])
+    sheet.append(["Total Stock Handled", float(dataset["totals"]["stock_handled"])])
     sheet.append(["Total Closing Stock", float(dataset["totals"]["closing_stock"])])
     sheet.append(["Total Sales", float(dataset["total_sales"])])
     sheet.append(["Total Debts", float(dataset["totals"]["debts"])])
     sheet.append(["Total Expenses", float(dataset["totals"]["expenses"] or Decimal("0.00"))])
-    sheet.append(["Profit/Loss", float(dataset["profit_or_loss"])])
+    sheet.append(["Monthly Profit", float(dataset["monthly_business_profit"])])
     sheet.append([])
     sheet.append([
         "Date",
@@ -1030,7 +1115,6 @@ def export_report_excel(request):
         "Debts",
         "Closing Stock",
         "Other Expenses",
-        "P/L",
     ])
 
     for entry in entries:
@@ -1046,7 +1130,24 @@ def export_report_excel(request):
                 float(entry.debts or Decimal("0.00")),
                 float(entry.closing_stock or Decimal("0.00")),
                 entry.notes or "",
-                float(entry.profit_or_loss or Decimal("0.00")),
+            ]
+        )
+
+    sheet.append([])
+    sheet.append(["Monthly Profit Window", f"{dataset['monthly_profit_start']} to {dataset['monthly_profit_end']}"])
+    sheet.append(["Business Monthly Profit", float(dataset["monthly_business_profit"])])
+    sheet.append([])
+    sheet.append(["Shop", "Type", "Sales Volume", "Expenses Volume", "Stock Consumed", "Closing Stock", "Profit"])
+    for item in dataset["monthly_profit_by_shop"]:
+        sheet.append(
+            [
+                item["shop"].name,
+                item["shop"].get_shop_type_display(),
+                float(item["sales"]),
+                float(item["expenses"]),
+                float(item["stock_consumed"]),
+                float(item["closing_stock"]),
+                float(item["profit"]),
             ]
         )
 
@@ -1085,6 +1186,8 @@ def export_report_pdf(request):
     y -= 14
     pdf.drawString(40, y, f"Total Added Stock: {dataset['totals']['stock_added']}")
     y -= 14
+    pdf.drawString(40, y, f"Total Stock Handled: {dataset['totals']['stock_handled']}")
+    y -= 14
     pdf.drawString(40, y, f"Total Closing Stock: {dataset['totals']['closing_stock']}")
     y -= 14
     pdf.drawString(40, y, f"Total Sales: {dataset['total_sales']}")
@@ -1093,7 +1196,11 @@ def export_report_pdf(request):
     y -= 14
     pdf.drawString(40, y, f"Expenses: {dataset['totals']['expenses'] or Decimal('0.00')}")
     y -= 14
-    pdf.drawString(40, y, f"Profit/Loss: {dataset['profit_or_loss']}")
+    pdf.drawString(
+        40,
+        y,
+        f"Monthly Profit ({dataset['monthly_profit_start']} to {dataset['monthly_profit_end']}): {dataset['monthly_business_profit']}",
+    )
     y -= 24
 
     pdf.setFont("Helvetica-Bold", 9)
@@ -1107,7 +1214,6 @@ def export_report_pdf(request):
     pdf.drawString(506, y, "Debts")
     pdf.drawString(561, y, "Close")
     pdf.drawString(616, y, "Other")
-    pdf.drawString(722, y, "P/L")
     y -= 14
 
     pdf.setFont("Helvetica", 8)
@@ -1126,7 +1232,6 @@ def export_report_pdf(request):
             pdf.drawString(506, y, "Debts")
             pdf.drawString(561, y, "Close")
             pdf.drawString(616, y, "Other")
-            pdf.drawString(722, y, "P/L")
             y -= 14
             pdf.setFont("Helvetica", 8)
 
@@ -1139,8 +1244,50 @@ def export_report_pdf(request):
         pdf.drawRightString(499, y, f"{entry.sales_value}")
         pdf.drawRightString(554, y, f"{entry.debts}")
         pdf.drawRightString(609, y, f"{entry.closing_stock}")
-        pdf.drawString(616, y, (entry.notes or "-")[:18])
-        pdf.drawRightString(760, y, f"{entry.profit_or_loss}")
+        pdf.drawString(616, y, (entry.notes or "-")[:28])
+        y -= 12
+
+    if y < 120:
+        pdf.showPage()
+        y = height - 40
+
+    y -= 8
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(40, y, "Monthly Profit by Shop")
+    y -= 16
+    pdf.setFont("Helvetica-Bold", 9)
+    pdf.drawString(40, y, "Shop")
+    pdf.drawString(190, y, "Type")
+    pdf.drawString(270, y, "Sales")
+    pdf.drawString(350, y, "Expenses")
+    pdf.drawString(440, y, "Consumed")
+    pdf.drawString(530, y, "Closing")
+    pdf.drawString(620, y, "Profit")
+    y -= 14
+    pdf.setFont("Helvetica", 8)
+
+    for item in dataset["monthly_profit_by_shop"]:
+        if y < 40:
+            pdf.showPage()
+            y = height - 40
+            pdf.setFont("Helvetica-Bold", 9)
+            pdf.drawString(40, y, "Shop")
+            pdf.drawString(190, y, "Type")
+            pdf.drawString(270, y, "Sales")
+            pdf.drawString(350, y, "Expenses")
+            pdf.drawString(440, y, "Consumed")
+            pdf.drawString(530, y, "Closing")
+            pdf.drawString(620, y, "Profit")
+            y -= 14
+            pdf.setFont("Helvetica", 8)
+
+        pdf.drawString(40, y, item["shop"].name[:24])
+        pdf.drawString(190, y, item["shop"].get_shop_type_display()[:12])
+        pdf.drawRightString(335, y, f"{item['sales']}")
+        pdf.drawRightString(425, y, f"{item['expenses']}")
+        pdf.drawRightString(515, y, f"{item['stock_consumed']}")
+        pdf.drawRightString(605, y, f"{item['closing_stock']}")
+        pdf.drawRightString(750, y, f"{item['profit']}")
         y -= 12
 
     pdf.save()
