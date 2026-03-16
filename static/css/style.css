@@ -222,6 +222,12 @@ th, td {
   z-index: 1;
 }
 
+.ledger-table tfoot th,
+.ledger-table tfoot td {
+  background: rgba(15, 118, 110, 0.08);
+  font-weight: 800;
+}
+
 .ledger-actions-cell {
   white-space: nowrap;
   vertical-align: middle;
@@ -388,7 +394,7 @@ th, td {
 
 .report-filter-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 210px));
+  grid-template-columns: repeat(6, minmax(140px, 210px));
   gap: 0.75rem;
   align-items: end;
   justify-content: start;

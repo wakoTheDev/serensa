@@ -12,7 +12,19 @@ class User(AbstractUser):
 
 
 class Shop(models.Model):
+    TYPE_RESTAURANT = "restaurant"
+    TYPE_RETAIL = "retail"
+    TYPE_BAR = "bar"
+    TYPE_OTHER = "other"
+    TYPE_CHOICES = [
+        (TYPE_RESTAURANT, "Restaurant"),
+        (TYPE_RETAIL, "Retail"),
+        (TYPE_BAR, "Bar"),
+        (TYPE_OTHER, "Other"),
+    ]
+
     name = models.CharField(max_length=120, unique=True)
+    shop_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_RETAIL)
     location = models.CharField(max_length=180, blank=True)
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -13,7 +13,7 @@ from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from openpyxl import Workbook
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, landscape
 from reportlab.pdfgen import canvas
 
 from .forms import (
@@ -531,6 +531,7 @@ def _build_balance_metrics(start, end):
 def _build_report_dataset(query_data):
     form = ReportFilterForm(query_data or None)
     entries_qs = DailyEntry.objects.select_related("shop", "submitted_by")
+    show_charts = (query_data.get("show_charts") == "1") if query_data is not None else False
 
     today = timezone.localdate()
     if form.is_bound and form.is_valid():
@@ -943,6 +944,8 @@ def _build_report_dataset(query_data):
     return {
         "form": form,
         "entries": entries,
+        "selected_shop": selected_shop,
+        "show_charts": show_charts,
         "start": start,
         "end": end,
         "period": period,
@@ -1008,29 +1011,25 @@ def export_report_excel(request):
     sheet.append(["Sensa Report"])
     sheet.append(["Period", f"{dataset['start']} to {dataset['end']}"])
     sheet.append([])
+    sheet.append(["Total Existing Stock", float(dataset["totals"]["opening_stock"])])
+    sheet.append(["Total Added Stock", float(dataset["totals"]["stock_added"])])
+    sheet.append(["Total Closing Stock", float(dataset["totals"]["closing_stock"])])
     sheet.append(["Total Sales", float(dataset["total_sales"])])
-    sheet.append(["Paid Sales", float(dataset["paid_sales_total"])])
-    sheet.append(["Cash Received", float(dataset["totals"]["cash_received"])])
-    sheet.append(["Mobile Money", float(dataset["mobile_money_total"])])
-    sheet.append(["Credit Sales", float(dataset["totals"]["debts"])])
-    sheet.append(["Stock Consumed", float(dataset["stock_consumed"])])
-    sheet.append(["Expenses", float(dataset["totals"]["expenses"] or Decimal("0.00"))])
-    sheet.append(["Bank Opening Balance", float(dataset["bank_opening_balance"])])
-    sheet.append(["Bank Closing Balance", float(dataset["bank_closing_balance"])])
-    sheet.append(["Bank Received", float(dataset["bank_received"])])
+    sheet.append(["Total Debts", float(dataset["totals"]["debts"])])
+    sheet.append(["Total Expenses", float(dataset["totals"]["expenses"] or Decimal("0.00"))])
     sheet.append(["Profit/Loss", float(dataset["profit_or_loss"])])
     sheet.append([])
     sheet.append([
         "Date",
         "Shop",
-        "Opening",
-        "Added",
+        "Type",
+        "Existing Stock",
+        "Added Stock",
         "Expenses",
         "Sales",
-        "Credit",
-        "Closing",
-        "Cash",
-        "Mobile",
+        "Debts",
+        "Closing Stock",
+        "Other Expenses",
         "P/L",
     ])
 
@@ -1039,14 +1038,14 @@ def export_report_excel(request):
             [
                 str(entry.entry_date),
                 entry.shop.name,
+                entry.shop.get_shop_type_display(),
                 float(entry.opening_stock or Decimal("0.00")),
                 float(entry.stock_added or Decimal("0.00")),
                 float(entry.expenses or Decimal("0.00")),
                 float(entry.sales_value or Decimal("0.00")),
                 float(entry.debts or Decimal("0.00")),
                 float(entry.closing_stock or Decimal("0.00")),
-                float(entry.cash_received or Decimal("0.00")),
-                float(entry.mobile_money_received or Decimal("0.00")),
+                entry.notes or "",
                 float(entry.profit_or_loss or Decimal("0.00")),
             ]
         )
@@ -1072,8 +1071,8 @@ def export_report_pdf(request):
     entries = dataset["entries"]
 
     output = BytesIO()
-    pdf = canvas.Canvas(output, pagesize=letter)
-    width, height = letter
+    pdf = canvas.Canvas(output, pagesize=landscape(letter))
+    width, height = landscape(letter)
 
     y = height - 40
     pdf.setFont("Helvetica-Bold", 14)
@@ -1082,35 +1081,33 @@ def export_report_pdf(request):
     pdf.setFont("Helvetica", 10)
     pdf.drawString(40, y, f"Period: {dataset['start']} to {dataset['end']}")
     y -= 18
+    pdf.drawString(40, y, f"Total Existing Stock: {dataset['totals']['opening_stock']}")
+    y -= 14
+    pdf.drawString(40, y, f"Total Added Stock: {dataset['totals']['stock_added']}")
+    y -= 14
+    pdf.drawString(40, y, f"Total Closing Stock: {dataset['totals']['closing_stock']}")
+    y -= 14
     pdf.drawString(40, y, f"Total Sales: {dataset['total_sales']}")
     y -= 14
-    pdf.drawString(40, y, f"Paid Sales: {dataset['paid_sales_total']}")
-    y -= 14
-    pdf.drawString(40, y, f"Cash Received: {dataset['totals']['cash_received']}")
-    y -= 14
-    pdf.drawString(40, y, f"Mobile Money: {dataset['mobile_money_total']}")
-    y -= 14
-    pdf.drawString(40, y, f"Stock Consumed: {dataset['stock_consumed']}")
+    pdf.drawString(40, y, f"Total Debts: {dataset['totals']['debts']}")
     y -= 14
     pdf.drawString(40, y, f"Expenses: {dataset['totals']['expenses'] or Decimal('0.00')}")
-    y -= 14
-    pdf.drawString(40, y, f"Bank Received: {dataset['bank_received']}")
     y -= 14
     pdf.drawString(40, y, f"Profit/Loss: {dataset['profit_or_loss']}")
     y -= 24
 
     pdf.setFont("Helvetica-Bold", 9)
     pdf.drawString(40, y, "Date")
-    pdf.drawString(92, y, "Shop")
-    pdf.drawString(176, y, "Open")
-    pdf.drawString(222, y, "Added")
-    pdf.drawString(270, y, "Exp")
-    pdf.drawString(316, y, "Sales")
-    pdf.drawString(365, y, "Credit")
-    pdf.drawString(414, y, "Close")
-    pdf.drawString(458, y, "Cash")
-    pdf.drawString(502, y, "Mobile")
-    pdf.drawString(555, y, "P/L")
+    pdf.drawString(106, y, "Shop")
+    pdf.drawString(220, y, "Type")
+    pdf.drawString(286, y, "Exist")
+    pdf.drawString(341, y, "Added")
+    pdf.drawString(396, y, "Exp")
+    pdf.drawString(451, y, "Sales")
+    pdf.drawString(506, y, "Debts")
+    pdf.drawString(561, y, "Close")
+    pdf.drawString(616, y, "Other")
+    pdf.drawString(722, y, "P/L")
     y -= 14
 
     pdf.setFont("Helvetica", 8)
@@ -1120,30 +1117,30 @@ def export_report_pdf(request):
             y = height - 40
             pdf.setFont("Helvetica-Bold", 9)
             pdf.drawString(40, y, "Date")
-            pdf.drawString(92, y, "Shop")
-            pdf.drawString(176, y, "Open")
-            pdf.drawString(222, y, "Added")
-            pdf.drawString(270, y, "Exp")
-            pdf.drawString(316, y, "Sales")
-            pdf.drawString(365, y, "Credit")
-            pdf.drawString(414, y, "Close")
-            pdf.drawString(458, y, "Cash")
-            pdf.drawString(502, y, "Mobile")
-            pdf.drawString(555, y, "P/L")
+            pdf.drawString(106, y, "Shop")
+            pdf.drawString(220, y, "Type")
+            pdf.drawString(286, y, "Exist")
+            pdf.drawString(341, y, "Added")
+            pdf.drawString(396, y, "Exp")
+            pdf.drawString(451, y, "Sales")
+            pdf.drawString(506, y, "Debts")
+            pdf.drawString(561, y, "Close")
+            pdf.drawString(616, y, "Other")
+            pdf.drawString(722, y, "P/L")
             y -= 14
             pdf.setFont("Helvetica", 8)
 
         pdf.drawString(40, y, str(entry.entry_date))
-        pdf.drawString(92, y, entry.shop.name[:14])
-        pdf.drawRightString(214, y, f"{entry.opening_stock}")
-        pdf.drawRightString(260, y, f"{entry.stock_added}")
-        pdf.drawRightString(306, y, f"{entry.expenses}")
-        pdf.drawRightString(355, y, f"{entry.sales_value}")
-        pdf.drawRightString(404, y, f"{entry.debts}")
-        pdf.drawRightString(449, y, f"{entry.closing_stock}")
-        pdf.drawRightString(496, y, f"{entry.cash_received}")
-        pdf.drawRightString(548, y, f"{entry.mobile_money_received}")
-        pdf.drawRightString(602, y, f"{entry.profit_or_loss}")
+        pdf.drawString(106, y, entry.shop.name[:20])
+        pdf.drawString(220, y, entry.shop.get_shop_type_display()[:10])
+        pdf.drawRightString(334, y, f"{entry.opening_stock}")
+        pdf.drawRightString(389, y, f"{entry.stock_added}")
+        pdf.drawRightString(444, y, f"{entry.expenses}")
+        pdf.drawRightString(499, y, f"{entry.sales_value}")
+        pdf.drawRightString(554, y, f"{entry.debts}")
+        pdf.drawRightString(609, y, f"{entry.closing_stock}")
+        pdf.drawString(616, y, (entry.notes or "-")[:18])
+        pdf.drawRightString(760, y, f"{entry.profit_or_loss}")
         y -= 12
 
     pdf.save()

@@ -5,7 +5,7 @@
     <div class="panel-head report-head">
         <div>
             <h2>Reports</h2>
-            <p class="muted report-subtitle">Operational and financial performance for the selected period.</p>
+            <p class="muted report-subtitle">Daily records by shop.</p>
         </div>
         <div class="report-actions">
             <a class="btn" href="{% url 'fetch_balance' %}">
@@ -48,6 +48,13 @@
             {{ form.shop }}
             {{ form.shop.errors }}
         </div>
+        <div class="filter-field">
+            <label for="id_show_charts">Charts</label>
+            <select id="id_show_charts" name="show_charts">
+                <option value="0" {% if not show_charts %}selected{% endif %}>Hidden</option>
+                <option value="1" {% if show_charts %}selected{% endif %}>Show</option>
+            </select>
+        </div>
         <div class="filter-actions">
             <button class="btn" type="submit">Apply Filter</button>
             <a class="btn btn-alt" href="{% url 'report_view' %}">Clear Filters</a>
@@ -59,8 +66,12 @@
     <div class="chip-row report-meta-row">
         <span class="chip">Period: {{ start }} to {{ end }}</span>
         <span class="chip">View: {{ filter_mode }}</span>
+        {% if selected_shop %}
+        <span class="chip">Shop: {{ selected_shop.name }}</span>
+        {% else %}
+        <span class="chip">Shop: All Shops</span>
+        {% endif %}
         <span class="chip">Entries: {{ entries|length }}</span>
-        <span class="chip">Charts: {{ chart_cards_count }}</span>
     </div>
     {% if balance %}
     <p class="muted report-balance-note">Latest fetched balance: {{ balance.balance }} ({{ balance.fetched_at }})</p>
@@ -68,61 +79,42 @@
 </section>
 
 <section class="panel">
-    <h3>Summary</h3>
+    <h3>Totals</h3>
     <div class="report-metric-grid" aria-label="Report Summary Metrics">
         <article class="metric-card">
-            <p class="metric-label">Total Sales Value</p>
+            <p class="metric-label">Sales</p>
             <p class="metric-value">{{ total_sales }}</p>
         </article>
         <article class="metric-card">
-            <p class="metric-label">Paid Sales</p>
-            <p class="metric-value">{{ paid_sales_total }}</p>
-        </article>
-        <article class="metric-card">
-            <p class="metric-label">Cash Received</p>
-            <p class="metric-value">{{ totals.cash_received|default:0 }}</p>
-        </article>
-        <article class="metric-card">
-            <p class="metric-label">Mobile Money</p>
-            <p class="metric-value">{{ mobile_money_total }}</p>
-        </article>
-        <article class="metric-card">
-            <p class="metric-label">Credit Sales</p>
+            <p class="metric-label">Debts</p>
             <p class="metric-value">{{ totals.debts|default:0 }}</p>
         </article>
         <article class="metric-card">
-            <p class="metric-label">Stock Consumed</p>
-            <p class="metric-value">{{ stock_consumed }}</p>
+            <p class="metric-label">Existing Stock</p>
+            <p class="metric-value">{{ totals.opening_stock|default:0 }}</p>
         </article>
         <article class="metric-card">
-            <p class="metric-label">Total Expenses</p>
+            <p class="metric-label">Added Stock</p>
+            <p class="metric-value">{{ totals.stock_added|default:0 }}</p>
+        </article>
+        <article class="metric-card">
+            <p class="metric-label">Closing Stock</p>
+            <p class="metric-value">{{ totals.closing_stock|default:0 }}</p>
+        </article>
+        <article class="metric-card">
+            <p class="metric-label">Expenses</p>
             <p class="metric-value">{{ totals.expenses|default:0 }}</p>
-        </article>
-        <article class="metric-card">
-            <p class="metric-label">Bank Opening Balance</p>
-            <p class="metric-value">{{ bank_opening_balance }}</p>
-        </article>
-        <article class="metric-card">
-            <p class="metric-label">Bank Closing Balance</p>
-            <p class="metric-value">{{ bank_closing_balance }}</p>
-        </article>
-        <article class="metric-card">
-            <p class="metric-label">Bank Received</p>
-            <p class="metric-value">{{ bank_received }}</p>
         </article>
         <article class="metric-card metric-card-highlight {% if profit_or_loss < 0 %}metric-card-loss{% else %}metric-card-profit{% endif %}">
             <p class="metric-label">Profit/Loss</p>
             <p class="metric-value">{{ profit_or_loss }}</p>
         </article>
     </div>
-    {% if not bank_has_delta %}
-    <p class="muted report-bank-hint">Bank receipts are only exact when a balance was fetched before the start date and again within the selected period.</p>
-    {% endif %}
 </section>
 
+{% if show_charts %}
 <section class="panel">
     <h3>Shop Charts</h3>
-    <p class="muted">Shop-specific trends and metrics. Scroll horizontally to view all shops.</p>
     <div class="report-chart-scroll" role="region" aria-label="Shop Charts Scroll">
         <div class="report-chart-board" id="shop-chart-board"></div>
         <div class="muted" id="empty-shop-charts" hidden>
@@ -133,7 +125,6 @@
 
 <section class="panel">
     <h3>General Charts</h3>
-    <p class="muted">All-shops aggregated analytics. Scroll horizontally to view all metrics.</p>
     <div class="report-chart-scroll" role="region" aria-label="General Charts Scroll">
         <div class="report-chart-board" id="general-chart-board"></div>
         <div class="muted" id="empty-general-charts" hidden>
@@ -141,14 +132,15 @@
         </div>
     </div>
 </section>
+{% endif %}
 
 <section class="panel">
-    <h3>Ledger</h3>
+    <h3>Report Ledger</h3>
     <div class="table-wrap">
         <table class="ledger-table">
             <thead>
                 <tr>
-                    <th>Date</th><th>Shop</th><th>Open</th><th>Added</th><th>Expenses</th><th>Sales</th><th>Credit</th><th>Closing</th><th>Cash</th><th>Mobile</th><th>P/L</th><th>Actions</th>
+                    <th>Date</th><th>Shop</th><th>Type</th><th>Existing Stock</th><th>Added Stock</th><th>Expenses</th><th>Sales</th><th>Debts</th><th>Closing Stock</th><th>Other Expenses</th><th>P/L</th><th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -156,14 +148,14 @@
                 <tr>
                     <td>{{ entry.entry_date }}</td>
                     <td>{{ entry.shop.name }}</td>
+                    <td>{{ entry.shop.get_shop_type_display }}</td>
                     <td>{{ entry.opening_stock }}</td>
                     <td>{{ entry.stock_added }}</td>
                     <td>{{ entry.expenses }}</td>
                     <td>{{ entry.sales_value }}</td>
                     <td>{{ entry.debts }}</td>
                     <td>{{ entry.closing_stock }}</td>
-                    <td>{{ entry.cash_received }}</td>
-                    <td>{{ entry.mobile_money_received }}</td>
+                    <td>{{ entry.notes|default:"-" }}</td>
                     <td>{{ entry.profit_or_loss }}</td>
                     <td class="ledger-actions-cell">
                         <div class="ledger-actions-wrap">
@@ -176,10 +168,28 @@
                 <tr><td colspan="12">No records in selected period.</td></tr>
                 {% endfor %}
             </tbody>
+            {% if entries %}
+            <tfoot>
+                <tr>
+                    <th colspan="3">Totals</th>
+                    <th>{{ totals.opening_stock|default:0 }}</th>
+                    <th>{{ totals.stock_added|default:0 }}</th>
+                    <th>{{ totals.expenses|default:0 }}</th>
+                    <th>{{ totals.sales_value|default:0 }}</th>
+                    <th>{{ totals.debts|default:0 }}</th>
+                    <th>{{ totals.closing_stock|default:0 }}</th>
+                    <th>-</th>
+                    <th>{{ profit_or_loss }}</th>
+                    <th></th>
+                </tr>
+            </tfoot>
+            {% endif %}
         </table>
     </div>
 </section>
 
+{% if show_charts %}
 {{ chart_payload|json_script:"chart-data" }}
 <script src="/static/js/charts.js"></script>
+{% endif %}
 {% endblock %}

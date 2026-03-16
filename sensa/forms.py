@@ -14,7 +14,7 @@ User = get_user_model()
 class ShopForm(forms.ModelForm):
     class Meta:
         model = Shop
-        fields = ["name", "location", "active"]
+        fields = ["name", "shop_type", "location", "active"]
 
 
 class DailyEntryForm(forms.ModelForm):
