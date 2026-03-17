@@ -1110,7 +1110,6 @@ def export_report_excel(request):
         "Sales",
         "Debts",
         "Closing Stock",
-        "Other Expenses",
     ])
 
     for entry in entries:
@@ -1125,7 +1124,6 @@ def export_report_excel(request):
                 float(entry.sales_value or Decimal("0.00")),
                 float(entry.debts or Decimal("0.00")),
                 float(entry.closing_stock or Decimal("0.00")),
-                entry.notes or "",
             ]
         )
 
@@ -1141,7 +1139,6 @@ def export_report_excel(request):
                 float(dataset["totals"]["sales_value"]),
                 float(dataset["totals"]["debts"]),
                 float(dataset["totals"]["closing_stock"]),
-                "",
             ]
         )
 
@@ -1239,7 +1236,6 @@ def export_report_pdf(request):
     pdf.drawString(451, y, "Sales")
     pdf.drawString(506, y, "Debts")
     pdf.drawString(561, y, "Close")
-    pdf.drawString(616, y, "Other")
     y -= 14
 
     pdf.setFont("Helvetica", 8)
@@ -1257,7 +1253,6 @@ def export_report_pdf(request):
             pdf.drawString(451, y, "Sales")
             pdf.drawString(506, y, "Debts")
             pdf.drawString(561, y, "Close")
-            pdf.drawString(616, y, "Other")
             y -= 14
             pdf.setFont("Helvetica", 8)
 
@@ -1270,7 +1265,6 @@ def export_report_pdf(request):
         pdf.drawRightString(499, y, f"{entry.sales_value}")
         pdf.drawRightString(554, y, f"{entry.debts}")
         pdf.drawRightString(609, y, f"{entry.closing_stock}")
-        pdf.drawString(616, y, (entry.notes or "-")[:28])
         y -= 12
 
     if entries:
@@ -1287,7 +1281,6 @@ def export_report_pdf(request):
             pdf.drawString(451, y, "Sales")
             pdf.drawString(506, y, "Debts")
             pdf.drawString(561, y, "Close")
-            pdf.drawString(616, y, "Other")
             y -= 14
 
         pdf.setFont("Helvetica-Bold", 8)

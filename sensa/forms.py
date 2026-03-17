@@ -29,7 +29,6 @@ class DailyEntryForm(forms.ModelForm):
             "sales_value",
             "debts",
             "closing_stock",
-            "notes",
         ]
         widgets = {
             "entry_date": forms.DateInput(attrs={"type": "date"}),
@@ -58,8 +57,6 @@ class DailyEntryForm(forms.ModelForm):
         self.fields["opening_stock"].label = "Existing Stock"
         self.fields["closing_stock"].label = "Closing Stock"
         self.fields["expenses"].label = "Expenses"
-        self.fields["notes"].label = "Other Expenses"
-        self.fields["notes"].required = False
 
         if require_opening_stock:
             self.fields["opening_stock"].required = True
@@ -79,8 +76,6 @@ class DailyEntryForm(forms.ModelForm):
 
         if debts > sales_value:
             self.add_error("debts", "Debts cannot be greater than sales.")
-
-        cleaned_data["notes"] = (cleaned_data.get("notes") or "").strip()
 
         return cleaned_data
 
