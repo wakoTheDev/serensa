@@ -14,6 +14,10 @@
     {% endif %}
 
     <p>{{ form.shop.label_tag }}{{ form.shop }}{{ form.shop.errors }}</p>
+    <p id="shop-type-row" hidden>
+        <label for="id_shop_type_display">Shop Type</label>
+        <input id="id_shop_type_display" type="text" readonly>
+    </p>
     <p>{{ form.entry_date.label_tag }}{{ form.entry_date }}{{ form.entry_date.errors }}</p>
     <p>{{ form.sales_value.label_tag }}{{ form.sales_value }}{{ form.sales_value.errors }}</p>
     <p>{{ form.debts.label_tag }}{{ form.debts }}{{ form.debts.errors }}</p>
@@ -30,9 +34,30 @@
 <script>
 (() => {
     const shopField = document.getElementById("id_shop");
+    const shopTypeRow = document.getElementById("shop-type-row");
+    const shopTypeDisplay = document.getElementById("id_shop_type_display");
     if (!shopField) return;
 
+    const shopTypeMap = {
+        {% for shop in form.fields.shop.queryset %}
+        "{{ shop.pk }}": "{{ shop.get_shop_type_display|escapejs }}",
+        {% endfor %}
+    };
+
+    const updateShopType = () => {
+        const shopType = shopTypeMap[shopField.value] || "";
+        if (shopTypeDisplay) {
+            shopTypeDisplay.value = shopType;
+        }
+        if (shopTypeRow) {
+            shopTypeRow.hidden = !shopType;
+        }
+    };
+
+    updateShopType();
+
     shopField.addEventListener("change", () => {
+        updateShopType();
         const params = new URLSearchParams(window.location.search);
         if (shopField.value) {
             params.set("shop", shopField.value);
