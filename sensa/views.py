@@ -1088,7 +1088,7 @@ def export_report_excel(request):
     sheet = workbook.active
     sheet.title = "Sensa Report"
 
-    sheet.append(["Sensa Report"])
+    sheet.append(["Serensa Enterprise Report"])
     sheet.append(["Period", f"{dataset['start']} to {dataset['end']}"])
     sheet.append([])
     sheet.append(["Total Existing Stock", float(dataset["totals"]["opening_stock"])])
@@ -1129,12 +1129,29 @@ def export_report_excel(request):
             ]
         )
 
+    if entries:
+        sheet.append(
+            [
+                "Totals",
+                "",
+                "",
+                float(dataset["totals"]["opening_stock"]),
+                float(dataset["totals"]["stock_added"]),
+                float(dataset["totals"]["expenses"] or Decimal("0.00")),
+                float(dataset["totals"]["sales_value"]),
+                float(dataset["totals"]["debts"]),
+                float(dataset["totals"]["closing_stock"]),
+                "",
+            ]
+        )
+
     sheet.append([])
     sheet.append(["Monthly Profit Window", f"{dataset['monthly_profit_start']} to {dataset['monthly_profit_end']}"])
     sheet.append(["Business Monthly Profit", float(dataset["monthly_business_profit"])])
     sheet.append([])
     sheet.append(["Shop", "Type", "Sales Volume", "Expenses Volume", "Stock Consumed", "Closing Stock", "Profit"])
-    for item in dataset["monthly_profit_by_shop"]:
+    monthly_rows = dataset["monthly_profit_by_shop"]
+    for item in monthly_rows:
         sheet.append(
             [
                 item["shop"].name,
@@ -1144,6 +1161,19 @@ def export_report_excel(request):
                 float(item["stock_consumed"]),
                 float(item["closing_stock"]),
                 float(item["profit"]),
+            ]
+        )
+
+    if monthly_rows:
+        sheet.append(
+            [
+                "Grand Total",
+                "",
+                float(sum((item["sales"] for item in monthly_rows), Decimal("0.00"))),
+                float(sum((item["expenses"] for item in monthly_rows), Decimal("0.00"))),
+                float(sum((item["stock_consumed"] for item in monthly_rows), Decimal("0.00"))),
+                float(sum((item["closing_stock"] for item in monthly_rows), Decimal("0.00"))),
+                float(sum((item["profit"] for item in monthly_rows), Decimal("0.00"))),
             ]
         )
 
@@ -1173,7 +1203,7 @@ def export_report_pdf(request):
 
     y = height - 40
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(40, y, "Sensa Value Report")
+    pdf.drawString(40, y, "Serensa Enterprise Value Report")
     y -= 20
     pdf.setFont("Helvetica", 10)
     pdf.drawString(40, y, f"Period: {dataset['start']} to {dataset['end']}")
@@ -1243,6 +1273,33 @@ def export_report_pdf(request):
         pdf.drawString(616, y, (entry.notes or "-")[:28])
         y -= 12
 
+    if entries:
+        if y < 52:
+            pdf.showPage()
+            y = height - 40
+            pdf.setFont("Helvetica-Bold", 9)
+            pdf.drawString(40, y, "Date")
+            pdf.drawString(106, y, "Shop")
+            pdf.drawString(220, y, "Type")
+            pdf.drawString(286, y, "Exist")
+            pdf.drawString(341, y, "Added")
+            pdf.drawString(396, y, "Exp")
+            pdf.drawString(451, y, "Sales")
+            pdf.drawString(506, y, "Debts")
+            pdf.drawString(561, y, "Close")
+            pdf.drawString(616, y, "Other")
+            y -= 14
+
+        pdf.setFont("Helvetica-Bold", 8)
+        pdf.drawString(40, y, "Totals")
+        pdf.drawRightString(334, y, f"{dataset['totals']['opening_stock']}")
+        pdf.drawRightString(389, y, f"{dataset['totals']['stock_added']}")
+        pdf.drawRightString(444, y, f"{dataset['totals']['expenses'] or Decimal('0.00')}")
+        pdf.drawRightString(499, y, f"{dataset['totals']['sales_value']}")
+        pdf.drawRightString(554, y, f"{dataset['totals']['debts']}")
+        pdf.drawRightString(609, y, f"{dataset['totals']['closing_stock']}")
+        y -= 14
+
     if y < 120:
         pdf.showPage()
         y = height - 40
@@ -1262,7 +1319,8 @@ def export_report_pdf(request):
     y -= 14
     pdf.setFont("Helvetica", 8)
 
-    for item in dataset["monthly_profit_by_shop"]:
+    monthly_rows = dataset["monthly_profit_by_shop"]
+    for item in monthly_rows:
         if y < 40:
             pdf.showPage()
             y = height - 40
@@ -1284,6 +1342,29 @@ def export_report_pdf(request):
         pdf.drawRightString(515, y, f"{item['stock_consumed']}")
         pdf.drawRightString(605, y, f"{item['closing_stock']}")
         pdf.drawRightString(750, y, f"{item['profit']}")
+        y -= 12
+
+    if monthly_rows:
+        if y < 40:
+            pdf.showPage()
+            y = height - 40
+            pdf.setFont("Helvetica-Bold", 9)
+            pdf.drawString(40, y, "Shop")
+            pdf.drawString(190, y, "Type")
+            pdf.drawString(270, y, "Sales")
+            pdf.drawString(350, y, "Expenses")
+            pdf.drawString(440, y, "Consumed")
+            pdf.drawString(530, y, "Closing")
+            pdf.drawString(620, y, "Profit")
+            y -= 14
+
+        pdf.setFont("Helvetica-Bold", 8)
+        pdf.drawString(40, y, "Grand Total")
+        pdf.drawRightString(335, y, f"{sum((item['sales'] for item in monthly_rows), Decimal('0.00'))}")
+        pdf.drawRightString(425, y, f"{sum((item['expenses'] for item in monthly_rows), Decimal('0.00'))}")
+        pdf.drawRightString(515, y, f"{sum((item['stock_consumed'] for item in monthly_rows), Decimal('0.00'))}")
+        pdf.drawRightString(605, y, f"{sum((item['closing_stock'] for item in monthly_rows), Decimal('0.00'))}")
+        pdf.drawRightString(750, y, f"{sum((item['profit'] for item in monthly_rows), Decimal('0.00'))}")
         y -= 12
 
     pdf.save()
