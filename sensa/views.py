@@ -377,9 +377,7 @@ def entry_admin_delete(request, entry_id):
 @login_required
 @user_passes_test(_is_admin)
 def shop_list(request):
-    shops = Shop.objects.select_related("parent_shop").prefetch_related("subshops").all().order_by(
-        "parent_shop__name", "name"
-    )
+    shops = Shop.objects.select_related("parent_shop").all().order_by("parent_shop__name", "name")
     return render(request, "sensa/shop_list.html", {"shops": shops})
 
 
@@ -1439,7 +1437,6 @@ def cron_fetch_balance(request):
 def user_list(request):
     users = (
         User.objects.select_related("profile")
-        .prefetch_related("profile__assigned_shops__subshops")
         .all()
         .order_by("username")
     )
