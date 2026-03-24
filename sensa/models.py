@@ -88,17 +88,15 @@ class UserProfile(models.Model):
         if not assigned_ids:
             return Shop.objects.none()
 
-        children_of_assigned = Shop.objects.filter(
-            active=True,
-            parent_shop_id__in=assigned_ids,
-        )
-        assigned_without_active_children = (
-            Shop.objects.filter(active=True, id__in=assigned_ids)
-            .exclude(subshops__active=True)
+        # Mongo-friendly single queryset:
+        # 1) include active children of assigned parents
+        # 2) include directly assigned active shops that do not have active children
+        return (
+            Shop.objects.filter(active=True)
+            .filter(Q(parent_shop_id__in=assigned_ids) | Q(id__in=assigned_ids))
+            .exclude(id__in=Shop.objects.filter(id__in=assigned_ids, subshops__active=True))
             .distinct()
         )
-
-        return (children_of_assigned | assigned_without_active_children).distinct()
 
 
 class DailyEntry(models.Model):
