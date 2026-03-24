@@ -2,10 +2,16 @@
 
 {% block content %}
 <section class="panel">
-    <h2>Your Assigned Shops</h2>
+    <h2>Your Assigned Area Shops</h2>
     <div class="chip-row">
         {% for shop in assigned_shops %}
-            <span class="chip">{{ shop.name }}</span>
+            <span class="chip">
+                {% if shop.parent_shop %}
+                    {{ shop.parent_shop.name }} / {{ shop.name }}
+                {% else %}
+                    {{ shop.name }}
+                {% endif %}
+            </span>
         {% empty %}
             <span>No assigned shops yet.</span>
         {% endfor %}

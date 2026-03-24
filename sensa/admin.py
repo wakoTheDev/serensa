@@ -14,9 +14,9 @@ class UserAdmin(DjangoUserAdmin):
 
 @admin.register(Shop)
 class ShopAdmin(admin.ModelAdmin):
-    list_display = ("name", "location", "active", "created_at")
-    search_fields = ("name", "location")
-    list_filter = ("active",)
+    list_display = ("name", "parent_shop", "shop_type", "location", "active", "created_at")
+    search_fields = ("name", "parent_shop__name", "location")
+    list_filter = ("active", "shop_type")
 
 
 @admin.register(UserProfile)

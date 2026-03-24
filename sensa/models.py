@@ -4,6 +4,7 @@ from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -23,14 +24,42 @@ class Shop(models.Model):
         (TYPE_OTHER, "Other"),
     ]
 
-    name = models.CharField(max_length=120, unique=True)
+    name = models.CharField(max_length=120)
     shop_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_RETAIL)
+    parent_shop = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="subshops",
+    )
     location = models.CharField(max_length=180, blank=True)
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["name"],
+                condition=Q(parent_shop__isnull=True),
+                name="unique_parent_shop_name",
+            ),
+            models.UniqueConstraint(
+                fields=["parent_shop", "name"],
+                condition=Q(parent_shop__isnull=False),
+                name="unique_subshop_name_per_parent",
+            ),
+        ]
+
     def __str__(self):
+        if self.parent_shop_id:
+            return f"{self.parent_shop.name} / {self.name}"
         return self.name
+
+    @property
+    def is_subshop(self):
+        return bool(self.parent_shop_id)
 
 
 class UserProfile(models.Model):
@@ -53,6 +82,23 @@ class UserProfile(models.Model):
     @property
     def is_admin(self):
         return self.role == self.ADMIN or self.user.is_superuser
+
+    def accessible_shops(self):
+        assigned_ids = list(self.assigned_shops.values_list("id", flat=True))
+        if not assigned_ids:
+            return Shop.objects.none()
+
+        children_of_assigned = Shop.objects.filter(
+            active=True,
+            parent_shop_id__in=assigned_ids,
+        )
+        assigned_without_active_children = (
+            Shop.objects.filter(active=True, id__in=assigned_ids)
+            .exclude(subshops__active=True)
+            .distinct()
+        )
+
+        return (children_of_assigned | assigned_without_active_children).distinct()
 
 
 class DailyEntry(models.Model):

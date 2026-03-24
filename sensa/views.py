@@ -74,6 +74,20 @@ def _is_vendor(user):
     return bool(profile and not profile.is_admin)
 
 
+def _vendor_accessible_shops(user):
+    if not hasattr(user, "profile"):
+        return Shop.objects.none()
+    return user.profile.accessible_shops().order_by("parent_shop__name", "name")
+
+
+def _vendor_can_access_shop(user, shop):
+    if not hasattr(user, "profile") or not shop:
+        return False
+    if shop.subshops.filter(active=True).exists():
+        return False
+    return user.profile.accessible_shops().filter(pk=shop.pk).exists()
+
+
 def bootstrap_admin(request):
     if UserProfile.objects.filter(role=UserProfile.ADMIN, user__is_active=True).exists():
         messages.info(request, "Admin account already exists. Please login.")
@@ -122,7 +136,7 @@ def admin_dashboard(request):
 @user_passes_test(_is_vendor)
 def vendor_dashboard(request):
     today = timezone.localdate()
-    shops = request.user.profile.assigned_shops.filter(active=True)
+    shops = _vendor_accessible_shops(request.user)
     entries = DailyEntry.objects.filter(shop__in=shops).select_related("shop")
     todays = entries.filter(entry_date=today)
 
@@ -181,7 +195,7 @@ def entry_create_or_update(request):
         )
         if form.is_valid():
             shop = form.cleaned_data["shop"]
-            if _is_vendor(user) and not user.profile.assigned_shops.filter(pk=shop.pk).exists():
+            if _is_vendor(user) and not _vendor_can_access_shop(user, shop):
                 return HttpResponseForbidden("You can only submit data to your assigned shops.")
 
             entry = form.save(commit=False)
@@ -226,11 +240,11 @@ def entry_create_or_update(request):
         initial = {"entry_date": today}
 
         if _is_vendor(user):
-            assigned_shops = user.profile.assigned_shops.filter(active=True).order_by("name")
+            accessible_shops = _vendor_accessible_shops(user)
             if selected_shop_id:
-                selected_shop = assigned_shops.filter(pk=selected_shop_id).first()
+                selected_shop = accessible_shops.filter(pk=selected_shop_id).first()
             else:
-                selected_shop = assigned_shops.first()
+                selected_shop = accessible_shops.first()
             if selected_shop:
                 initial["shop"] = selected_shop
                 edit_entry = DailyEntry.objects.filter(shop=selected_shop, entry_date=today).first()
@@ -363,7 +377,9 @@ def entry_admin_delete(request, entry_id):
 @login_required
 @user_passes_test(_is_admin)
 def shop_list(request):
-    shops = Shop.objects.all().order_by("name")
+    shops = Shop.objects.select_related("parent_shop").prefetch_related("subshops").all().order_by(
+        "parent_shop__name", "name"
+    )
     return render(request, "sensa/shop_list.html", {"shops": shops})
 
 
@@ -598,7 +614,16 @@ def _build_report_dataset(query_data):
     entries_in_range_qs = entries_qs.filter(entry_date__range=(start, end)).order_by("entry_date", "shop__name")
     entries_qs = entries_in_range_qs
     if selected_shop:
-        entries_qs = entries_qs.filter(shop=selected_shop)
+        selected_shop_ids = [selected_shop.id]
+        if selected_shop.parent_shop_id is None:
+            selected_shop_ids.extend(
+                list(
+                    Shop.objects.filter(parent_shop=selected_shop, active=True).values_list(
+                        "id", flat=True
+                    )
+                )
+            )
+        entries_qs = entries_qs.filter(shop_id__in=selected_shop_ids)
 
     # `entries` remain filter-aware for ledger/shop-specific sections,
     # while `general_entries` always represent all shops in the selected date window.
@@ -1412,7 +1437,12 @@ def cron_fetch_balance(request):
 @login_required
 @user_passes_test(_is_admin)
 def user_list(request):
-    users = User.objects.select_related("profile").all().order_by("username")
+    users = (
+        User.objects.select_related("profile")
+        .prefetch_related("profile__assigned_shops__subshops")
+        .all()
+        .order_by("username")
+    )
     return render(request, "sensa/user_list.html", {"users": users})
 
 

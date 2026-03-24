@@ -11,6 +11,7 @@ It supports role-based access for Admin and Vendor users, captures daily shop va
 	- Vendor -> Vendor dashboard
 - Shop management:
 	- Create, update, delete shops.
+	- Supports parent enterprise + subshop structure (for example one enterprise with bar, restaurant, and retail subshops).
 - Value-entry management per shop:
 	- Opening stock
 	- Stock added
@@ -19,12 +20,14 @@ It supports role-based access for Admin and Vendor users, captures daily shop va
 	- Closing stock
 	- Cash received
 - Vendor permissions:
-	- Can feed data only for assigned shop(s).
+	- Vendors are assigned to parent enterprises.
+	- Can feed data per operational shop.
+	- If an assigned parent has subshops, data is entered for each child subshop (not the parent).
 	- Can update records only for the same day.
 	- Sees immediate latest record on vendor dashboard.
 - Admin permissions:
 	- Access all shops and reports.
-	- Add users/vendors, assign vendors to one or multiple shops, remove (deactivate) vendors.
+	- Add users/vendors, assign vendors to one or multiple parent enterprises, remove (deactivate) vendors.
 - Reports:
 	- Daily, weekly, monthly filters.
 	- Ledger table view.

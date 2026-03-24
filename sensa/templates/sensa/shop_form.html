@@ -3,6 +3,7 @@
 {% block content %}
 <section class="panel">
     <h2>{{ title }}</h2>
+    <p class="muted">Create a parent enterprise by leaving Parent Enterprise empty, or select a parent to create a subshop.</p>
     <form method="post" class="form-grid">
         {% csrf_token %}
         {{ form.as_p }}

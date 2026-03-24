@@ -8,11 +8,12 @@
     </div>
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Name</th><th>Type</th><th>Location</th><th>Active</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Parent Enterprise</th><th>Type</th><th>Location</th><th>Active</th><th>Actions</th></tr></thead>
             <tbody>
                 {% for shop in shops %}
                 <tr>
                     <td>{{ shop.name }}</td>
+                    <td>{{ shop.parent_shop.name|default:'-' }}</td>
                     <td>{{ shop.get_shop_type_display }}</td>
                     <td>{{ shop.location }}</td>
                     <td>{{ shop.active }}</td>
@@ -22,7 +23,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="5">No shops available.</td></tr>
+                <tr><td colspan="6">No shops available.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

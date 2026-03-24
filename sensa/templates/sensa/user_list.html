@@ -18,7 +18,15 @@
                     <td>{{ user_obj.is_active|yesno:'Active,Inactive' }}</td>
                     <td>
                         {% for shop in user_obj.profile.assigned_shops.all %}
-                            {{ shop.name }}{% if not forloop.last %}, {% endif %}
+                            {{ shop.name }}
+                            {% if shop.subshops.all %}
+                                (
+                                {% for subshop in shop.subshops.all %}
+                                    {{ subshop.name }}{% if not forloop.last %}, {% endif %}
+                                {% endfor %}
+                                )
+                            {% endif %}
+                            {% if not forloop.last %}, {% endif %}
                         {% empty %}
                             -
                         {% endfor %}
