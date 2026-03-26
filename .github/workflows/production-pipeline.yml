@@ -208,6 +208,7 @@ jobs:
           # Create SFTP batch file
           cat > /tmp/sftp_commands.txt << SFTP_EOF
           set ssl:verify-certificate no
+          set ssh:strict-host-key-checking no
           open sftp://${CPANEL_USER}:${CPANEL_PASS}@${CPANEL_HOST}:${CPANEL_PORT}
           cd ${DEPLOY_PATH}
           mirror -e -R --delete deploy_package .
