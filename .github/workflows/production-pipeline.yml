@@ -226,7 +226,13 @@ jobs:
       - name: Run PostgreSQL Migrations On cPanel Host
         shell: bash
         run: |
-          sudo apt-get update && sudo apt-get install -y sshpass openssh-client > /dev/null 2>&1
+          set -euo pipefail
+
+          echo "==============================================================="
+          echo "STEP: Install SSH tooling"
+          echo "==============================================================="
+          sudo apt-get update
+          sudo apt-get install -y sshpass openssh-client
 
           CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
           CPANEL_PORT="${{ secrets.CPANEL_SSH_PORT }}"
@@ -234,12 +240,37 @@ jobs:
           CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
           DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
 
-          mkdir -p ~/.ssh
-          ssh-keyscan -p "${CPANEL_PORT}" "${CPANEL_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
+          echo "==============================================================="
+          echo "STEP: Local pre-checks"
+          echo "==============================================================="
+          echo "Host: ${CPANEL_HOST}"
+          echo "Port: ${CPANEL_PORT}"
+          echo "User: ${CPANEL_USER}"
+          echo "Deploy path: ${DEPLOY_PATH}"
 
-          sshpass -p "${CPANEL_PASS}" ssh -p "${CPANEL_PORT}" "${CPANEL_USER}@${CPANEL_HOST}" "
-            set -e
-            cd ${DEPLOY_PATH}
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${CPANEL_PORT}" "${CPANEL_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          echo "==============================================================="
+          echo "STEP: SSH connectivity test"
+          echo "==============================================================="
+          if ! sshpass -p "${CPANEL_PASS}" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -p "${CPANEL_PORT}" "${CPANEL_USER}@${CPANEL_HOST}" "echo 'SSH OK: connected to \\$(hostname)'"; then
+            echo "::error::SSH connection failed. Check CPANEL_HOST/CPANEL_SSH_PORT/CPANEL_USER/CPANEL_SFTP_PASSWORD and server SSH access."
+            exit 1
+          fi
+
+          echo "==============================================================="
+          echo "STEP: Run remote dependency install + migrations"
+          echo "==============================================================="
+          if ! sshpass -p "${CPANEL_PASS}" ssh -tt -p "${CPANEL_PORT}" "${CPANEL_USER}@${CPANEL_HOST}" "
+            set -euo pipefail
+            echo '--- Remote whoami ---'
+            whoami
+            echo '--- Remote pwd ---'
+            pwd
+            echo '--- Verify deploy path ---'
+            ls -la '${DEPLOY_PATH}'
+            cd '${DEPLOY_PATH}'
 
             export DB_ENGINE=django.db.backends.postgresql
             export POSTGRES_DB='${{ secrets.CPANEL_DB_NAME }}'
@@ -248,19 +279,54 @@ jobs:
             export POSTGRES_HOST=localhost
             export POSTGRES_PORT=5432
 
+            echo '--- Detect virtualenv ---'
             if [ -f /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate ]; then
               . /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate
+              echo 'Activated: /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate'
             elif [ -f /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate ]; then
               . /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate
+              echo 'Activated: /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate'
+            else
+              echo 'No expected virtualenv activate script found'
             fi
 
+            echo '--- Python & Pip ---'
+            command -v python || true
+            python --version || true
+            python -m pip --version || true
+
+            echo '--- Install dependencies ---'
             python -m pip install --upgrade pip
             python -m pip install -r requirements.txt
-            python manage.py showmigrations --settings=serensa.settings
-            python manage.py migrate --noinput --settings=serensa.settings
-          "
 
-          echo " Database migrations completed on cPanel host"
+            echo '--- Verify psycopg modules ---'
+            python - <<'PY'
+import importlib
+mods = ['psycopg2', 'psycopg']
+for m in mods:
+    try:
+        importlib.import_module(m)
+        print(f'{m}: OK')
+    except Exception as e:
+        print(f'{m}: FAIL -> {e}')
+PY
+
+            echo '--- Django DB check ---'
+            python manage.py check --database default --settings=serensa.settings
+
+            echo '--- Show migrations ---'
+            python manage.py showmigrations --settings=serensa.settings
+
+            echo '--- Apply migrations ---'
+            python manage.py migrate --noinput --settings=serensa.settings
+          "; then
+            echo "::error::Remote migration block failed. See logs above for the exact command that failed."
+            exit 1
+          fi
+
+          echo "==============================================================="
+          echo "SUCCESS: Database migrations completed on cPanel host"
+          echo "==============================================================="
 
       - name: Restart cPanel Passenger App
         shell: bash
