@@ -203,12 +203,12 @@ jobs:
           CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
           DEPLOY_PATH="/home/${CPANEL_USER}/public_html"
           
-          echo "🚀 Deploying to cPanel at sftp://${CPANEL_HOST}:${CPANEL_PORT}/${DEPLOY_PATH}"
+          echo "Deploying to cPanel at sftp://${CPANEL_HOST}:${CPANEL_PORT}/${DEPLOY_PATH}"
           
           # Create SFTP batch file
           cat > /tmp/sftp_commands.txt << SFTP_EOF
           set ssl:verify-certificate no
-          set ssh:strict-host-key-checking no
+          set sftp:auto-confirm yes
           open sftp://${CPANEL_USER}:${CPANEL_PASS}@${CPANEL_HOST}:${CPANEL_PORT}
           cd ${DEPLOY_PATH}
           mirror -e -R --delete deploy_package .
@@ -218,7 +218,7 @@ jobs:
           # Upload via SFTP
           lftp < /tmp/sftp_commands.txt
           
-          echo "✅ Code deployed to cPanel"
+          echo " Code deployed to cPanel"
 
       - name: Run PostgreSQL Migrations
         shell: bash
@@ -232,7 +232,7 @@ jobs:
           
           python manage.py migrate --noinput --settings=serensa.settings
           
-          echo "✅ Database migrations completed"
+          echo " Database migrations completed"
 
       - name: Restart cPanel Passenger App
         shell: bash
@@ -252,12 +252,12 @@ jobs:
           # SSH and restart Passenger
           sshpass -p "${CPANEL_PASS}" ssh -p ${CPANEL_PORT} ${CPANEL_USER}@${CPANEL_HOST} \
             "mkdir -p /home/${CPANEL_USER}/public_html/tmp && touch /home/${CPANEL_USER}/public_html/tmp/restart.txt" \
-            || echo "ℹ️  Restart via SSH - attempting alternative method..."
+            || echo "  Restart via SSH - attempting alternative method..."
           
           # Alternative: Use Lftp to create restart.txt
           apt-get install -y lftp > /dev/null 2>&1 || true
           
-          echo "✅ Passenger app restart triggered"
+          echo " Passenger app restart triggered"
 
       - name: Health Check cPanel
         shell: bash
@@ -265,19 +265,19 @@ jobs:
           CPANEL_DOMAIN="${{ secrets.CPANEL_DOMAIN || 'serensaenterprises.co.ke' }}"
           HEALTHCHECK_URL="https://${CPANEL_DOMAIN}/healthcheck/"
           
-          echo "🔍 Checking cPanel health at: $HEALTHCHECK_URL"
+          echo " Checking cPanel health at: $HEALTHCHECK_URL"
           
           for attempt in {1..10}; do
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -k "$HEALTHCHECK_URL" 2>/dev/null || echo "000")
             if [[ "$HTTP_CODE" == "200" ]]; then
-              echo "✅ cPanel health check passed (HTTP $HTTP_CODE)"
+              echo " cPanel health check passed (HTTP $HTTP_CODE)"
               exit 0
             fi
-            echo "⏳ Attempt $attempt/10 - HTTP $HTTP_CODE, retrying in 15s..."
+            echo " Attempt $attempt/10 - HTTP $HTTP_CODE, retrying in 15s..."
             sleep 15
           done
           
-          echo "❌ cPanel health check failed after 10 attempts"
+          echo " cPanel health check failed after 10 attempts"
           exit 1
 
   # Deployment Summary
@@ -293,7 +293,7 @@ jobs:
           VERCEL_STATUS="${{ needs.deploy-vercel.result }}"
           CPANEL_STATUS="${{ needs.deploy-cpanel.result }}"
           
-          echo "📋 Deployment Summary"
+          echo " Deployment Summary"
           echo "===================="
           echo "Mode: $MODE"
           echo "Vercel Deploy: ${VERCEL_STATUS:-skipped}"
@@ -302,20 +302,20 @@ jobs:
           
           if [[ "$MODE" == "full-chain" ]]; then
             if [[ "$VERCEL_STATUS" == "success" && "$CPANEL_STATUS" == "success" ]]; then
-              echo "✅ Full chain deployment successful!"
+              echo " Full chain deployment successful!"
               exit 0
             fi
           elif [[ "$MODE" == "vercel-only" ]]; then
             if [[ "$VERCEL_STATUS" == "success" ]]; then
-              echo "✅ Vercel deployment successful!"
+              echo " Full chain deployment successful!"
               exit 0
             fi
           elif [[ "$MODE" == "cpanel-only" ]]; then
             if [[ "$CPANEL_STATUS" == "success" ]]; then
-              echo "✅ cPanel deployment successful!"
+              echo " Full chain deployment successful!"
               exit 0
             fi
           fi
           
-          echo "❌ Deployment failed"
+          echo " Deployment failed"
           exit 1
