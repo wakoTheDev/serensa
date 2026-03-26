@@ -140,10 +140,16 @@ jobs:
 
   # Deploy to cPanel
   deploy-cpanel:
-    needs: [determine-mode, verify-vercel]
+    needs: [determine-mode, deploy-vercel, verify-vercel]
     if: |
       needs.determine-mode.outputs.deploy_cpanel == 'true' &&
-      (needs.determine-mode.outputs.deploy_vercel == 'false' || success())
+      (
+        needs.determine-mode.outputs.deploy_vercel == 'false' ||
+        (
+          needs.deploy-vercel.result == 'success' &&
+          (needs.verify-vercel.result == 'success' || needs.verify-vercel.result == 'skipped')
+        )
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
