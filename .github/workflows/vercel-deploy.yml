@@ -53,6 +53,7 @@ jobs:
           set -a
           source .vercel/.env.production.local
           set +a
+          export DB_ENGINE=django.db.backends.sqlite3
           python manage.py migrate --noinput
 
       - name: Deploy Production
