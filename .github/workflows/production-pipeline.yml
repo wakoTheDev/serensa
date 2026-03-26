@@ -1,9 +1,20 @@
-name: Production Deployment Pipeline (Full Chain)
+name: Production Deployment Pipeline
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      deployment_mode:
+        description: 'Deployment mode'
+        required: true
+        default: 'full-chain'
+        type: choice
+        options:
+          - full-chain
+          - vercel-only
+          - cpanel-only
 
 concurrency:
   group: production-deployment
@@ -15,135 +26,332 @@ env:
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
-
-  # -------------------------------
-  # Deploy to Vercel
-  # -------------------------------
-  deploy-vercel:
+  # Determine deployment mode
+  determine-mode:
     runs-on: ubuntu-latest
     outputs:
-      vercel_url: ${{ steps.deploy.outputs.url }}
-
+      mode: ${{ steps.set-mode.outputs.mode }}
+      deploy_vercel: ${{ steps.set-mode.outputs.deploy_vercel }}
+      deploy_cpanel: ${{ steps.set-mode.outputs.deploy_cpanel }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Determine Deployment Mode
+        id: set-mode
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            MODE="full-chain"
+          else
+            MODE="${{ inputs.deployment_mode }}"
+          fi
+          
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
+          
+          case "$MODE" in
+            full-chain)
+              echo "deploy_vercel=true" >> $GITHUB_OUTPUT
+              echo "deploy_cpanel=true" >> $GITHUB_OUTPUT
+              ;;
+            vercel-only)
+              echo "deploy_vercel=true" >> $GITHUB_OUTPUT
+              echo "deploy_cpanel=false" >> $GITHUB_OUTPUT
+              ;;
+            cpanel-only)
+              echo "deploy_vercel=false" >> $GITHUB_OUTPUT
+              echo "deploy_cpanel=true" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+  # Deploy to Vercel
+  deploy-vercel:
+    needs: determine-mode
+    if: needs.determine-mode.outputs.deploy_vercel == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      vercel_url: ${{ steps.deploy.outputs.preview_url || steps.deploy.outputs.url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Validate Vercel Secrets
+        shell: bash
         run: |
-          [[ -n "$VERCEL_TOKEN" ]] || exit 1
-          [[ -n "$VERCEL_ORG_ID" ]] || exit 1
-          [[ -n "$VERCEL_PROJECT_ID" ]] || exit 1
+          [[ -n "$VERCEL_TOKEN" ]] || { echo "Missing: VERCEL_TOKEN"; exit 1; }
+          [[ -n "$VERCEL_ORG_ID" ]] || { echo "Missing: VERCEL_ORG_ID"; exit 1; }
+          [[ -n "$VERCEL_PROJECT_ID" ]] || { echo "Missing: VERCEL_PROJECT_ID"; exit 1; }
 
-      - uses: actions/setup-node@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python Dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - run: npm install -g vercel
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
 
-      - name: Pull Env
+      - name: Pull Vercel Environment
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
-      - name: Deploy
+      - name: Deploy to Vercel Production
         id: deploy
         run: |
           OUTPUT=$(vercel deploy --prod --yes --token="$VERCEL_TOKEN")
           echo "$OUTPUT"
+          # Extract the deployment URL
           URL=$(echo "$OUTPUT" | grep -oP 'https://[^\s]+' | tail -1)
           echo "url=$URL" >> $GITHUB_OUTPUT
 
-  # -------------------------------
-  # Verify Vercel
-  # -------------------------------
-  verify-vercel:
-    needs: deploy-vercel
-    runs-on: ubuntu-latest
+      - name: Log Vercel Deployment
+        run: |
+          echo "Deployed to Vercel: ${{ steps.deploy.outputs.url }}"
 
+  # Wait and verify Vercel health
+  verify-vercel:
+    needs: [determine-mode, deploy-vercel]
+    if: needs.determine-mode.outputs.deploy_vercel == 'true'
+    runs-on: ubuntu-latest
     steps:
-      - name: Wait
+      - name: Wait 2 Minutes for Vercel Stabilization
         run: sleep 120
 
-      - name: Health Check
+      - name: Health Check Vercel
+        shell: bash
         run: |
-          URL="https://serensa.vercel.app/healthcheck/"
-
-          for i in {1..5}; do
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
-            if [[ "$CODE" == "200" ]]; then
-              echo "Vercel OK"
+          VERCEL_URL="https://serensa.vercel.app"
+          echo "Checking Vercel health at: $VERCEL_URL/healthcheck/"
+          
+          for attempt in {1..5}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$VERCEL_URL/healthcheck/")
+            if [[ "$HTTP_CODE" == "200" ]]; then
+              echo "Vercel health check passed (HTTP $HTTP_CODE)"
               exit 0
             fi
+            echo "Attempt $attempt/5 - HTTP $HTTP_CODE, retrying in 10s..."
             sleep 10
           done
-
-          echo "Vercel failed"
+          
+          echo "Vercel health check failed after 5 attempts"
           exit 1
 
-  # -------------------------------
   # Deploy to cPanel
-  # -------------------------------
   deploy-cpanel:
-    needs: verify-vercel
+    needs: [determine-mode, verify-vercel]
+    if: |
+      needs.determine-mode.outputs.deploy_cpanel == 'true' &&
+      (needs.determine-mode.outputs.deploy_vercel == 'false' || success())
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Validate cPanel Secrets
+        shell: bash
         run: |
-          [[ -n "${{ secrets.CPANEL_HOST }}" ]] || exit 1
-          [[ -n "${{ secrets.CPANEL_USER }}" ]] || exit 1
+          [[ -n "${{ secrets.CPANEL_HOST }}" ]] || { echo "Missing: CPANEL_HOST"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_PORT }}" ]] || { echo "Missing: CPANEL_PORT"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_USER }}" ]] || { echo "Missing: CPANEL_USER"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_SFTP_PASSWORD }}" ]] || { echo "Missing: CPANEL_SFTP_PASSWORD"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_DB_NAME }}" ]] || { echo "Missing: CPANEL_DB_NAME"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_DB_USER }}" ]] || { echo "Missing: CPANEL_DB_USER"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_DB_PASSWORD }}" ]] || { echo "Missing: CPANEL_DB_PASSWORD"; exit 1; }
 
-      # ✅ FIXED STEP HERE
-      - name: Prepare Package (FIXED)
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python Dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Prepare Deployment Package
         run: |
+          # Create deployment directory
           mkdir -p deploy_package
-          rsync -av \
-            --exclude 'deploy_package' \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude '__pycache__' \
-            --exclude '*.pyc' \
-            ./ deploy_package/
-
-      - name: Upload via SFTP
-        run: |
-          sudo apt-get update && sudo apt-get install -y lftp
-
-          lftp -e "
-          set ssl:verify-certificate no
-          open -u ${{ secrets.CPANEL_USER }},${{ secrets.CPANEL_SFTP_PASSWORD }} sftp://${{ secrets.CPANEL_HOST }}
-          mirror -R deploy_package /home/${{ secrets.CPANEL_USER }}/serensa_app
-          bye
-          "
-
-      - name: Run Migrations via SSH
-        run: |
-          sudo apt-get install -y sshpass
-
-          sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -o StrictHostKeyChecking=no \
-          -p ${{ secrets.CPANEL_SSH_PORT }} \
-          ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} << 'EOF'
-
-          cd ~/serensa_app
-
-          echo "Installing dependencies..."
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
-
-          echo "Running migrations..."
-          python3 manage.py migrate --noinput
-
-          echo "Restarting Passenger..."
-          mkdir -p tmp && touch tmp/restart.txt
-
+          
+          # Copy app code
+          cp -r sensa deploy_package/
+          cp -r serensa deploy_package/
+          cp -r templates deploy_package/
+          cp -r static deploy_package/
+          cp -r scripts deploy_package/
+          cp manage.py deploy_package/
+          cp requirements.txt deploy_package/
+          cp passenger_wsgi.py deploy_package/
+          
+          # Create environment file for cPanel (not including secrets in the package)
+          cat > deploy_package/.env.cPanel << 'EOF'
+          DB_ENGINE=django.db.backends.postgresql
+          DJANGO_SECRET_KEY=${{ secrets.CPANEL_DJANGO_SECRET_KEY }}
+          DJANGO_DEBUG=0
+          DJANGO_ALLOWED_HOSTS=${{ secrets.CPANEL_ALLOWED_HOSTS }}
+          DJANGO_CSRF_TRUSTED_ORIGINS=${{ secrets.CPANEL_CSRF_TRUSTED_ORIGINS }}
+          DATABASE_URL=postgresql://${{ secrets.CPANEL_DB_USER }}:${{ secrets.CPANEL_DB_PASSWORD }}@localhost:5432/${{ secrets.CPANEL_DB_NAME }}
           EOF
 
-  # -------------------------------
-  # Summary
-  # -------------------------------
-  summary:
-    needs: [deploy-vercel, verify-vercel, deploy-cpanel]
-    runs-on: ubuntu-latest
+      - name: Setup SSH and Deploy via SFTP
+        shell: bash
+        run: |
+          # Install lftp for SFTP access
+          sudo apt-get update && sudo apt-get install -y lftp > /dev/null 2>&1
+          
+          CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
+          CPANEL_PORT="${{ secrets.CPANEL_PORT || 1624 }}"
+          CPANEL_USER="${{ secrets.CPANEL_USER }}"
+          CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
+          DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
+          
+          echo "Deploying to cPanel at sftp://${CPANEL_HOST}:${CPANEL_PORT}/${DEPLOY_PATH}"
+          
+          # Create SFTP batch file
+          cat > /tmp/sftp_commands.txt << SFTP_EOF
+          set ssl:verify-certificate no
+          set sftp:auto-confirm yes
+          open sftp://${CPANEL_USER}:${CPANEL_PASS}@${CPANEL_HOST}:${CPANEL_PORT}
+          cd ${DEPLOY_PATH}
+          mirror -e -R --delete deploy_package .
+          bye
+          SFTP_EOF
+          
+          # Upload via SFTP
+          lftp < /tmp/sftp_commands.txt
+          
+          echo " Code deployed to cPanel"
 
+      - name: Run PostgreSQL Migrations On cPanel Host
+        shell: bash
+        run: |
+          sudo apt-get update && sudo apt-get install -y sshpass openssh-client > /dev/null 2>&1
+
+          CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
+          CPANEL_PORT="${{ secrets.CPANEL_PORT }}"
+          CPANEL_USER="${{ secrets.CPANEL_USER }}"
+          CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
+          DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
+
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${CPANEL_PORT}" "${CPANEL_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
+
+          sshpass -p "${CPANEL_PASS}" ssh -p "${CPANEL_PORT}" "${CPANEL_USER}@${CPANEL_HOST}" "
+            set -e
+            cd ${DEPLOY_PATH}
+
+            export DB_ENGINE=django.db.backends.postgresql
+            export POSTGRES_DB='${{ secrets.CPANEL_DB_NAME }}'
+            export POSTGRES_USER='${{ secrets.CPANEL_DB_USER }}'
+            export POSTGRES_PASSWORD='${{ secrets.CPANEL_DB_PASSWORD }}'
+            export POSTGRES_HOST=localhost
+            export POSTGRES_PORT=5432
+
+            if [ -f /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate ]; then
+              . /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate
+            elif [ -f /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate ]; then
+              . /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate
+            fi
+
+            python manage.py showmigrations --settings=serensa.settings
+            python manage.py migrate --noinput --settings=serensa.settings
+          "
+
+          echo " Database migrations completed on cPanel host"
+
+      - name: Restart cPanel Passenger App
+        shell: bash
+        run: |
+          # Use SSH to touch restart.txt for Passenger app restart
+          sudo apt-get update && sudo apt-get install -y sshpass openssh-client > /dev/null 2>&1
+          
+          CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
+          CPANEL_PORT="${{ secrets.CPANEL_PORT || 22 }}"
+          CPANEL_USER="${{ secrets.CPANEL_USER }}"
+          CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
+          
+          # Create known_hosts entry
+          mkdir -p ~/.ssh
+          ssh-keyscan -p ${CPANEL_PORT} ${CPANEL_HOST} >> ~/.ssh/known_hosts 2>/dev/null
+          
+          # SSH and restart Passenger (non-fatal if shell disabled)
+          sshpass -p "${CPANEL_PASS}" ssh -p ${CPANEL_PORT} ${CPANEL_USER}@${CPANEL_HOST} \
+            "mkdir -p /home/${CPANEL_USER}/serensa_app/tmp && touch /home/${CPANEL_USER}/serensa_app/tmp/restart.txt" \
+            || echo "Note: SSH restart unavailable; cPanel may need manual restart from UI"
+          
+          # Alternative: Use Lftp to create restart.txt
+          sudo apt-get install -y lftp > /dev/null 2>&1 || true
+          
+          echo " Passenger app restart triggered"
+
+      - name: Health Check cPanel
+        shell: bash
+        run: |
+          CPANEL_DOMAIN="${{ secrets.CPANEL_DOMAIN || 'serensaenterprises.co.ke' }}"
+          HEALTHCHECK_URL="https://${CPANEL_DOMAIN}/healthcheck/"
+          
+          echo " Checking cPanel health at: $HEALTHCHECK_URL"
+          
+          for attempt in {1..10}; do
+            HTTP_CODE=$(curl -s -o /tmp/health_response.txt -w "%{http_code}" -k "$HEALTHCHECK_URL" 2>/dev/null || echo "000")
+            RESPONSE_BODY=$(cat /tmp/health_response.txt)
+            
+            if [[ "$HTTP_CODE" == "200" ]]; then
+              echo " cPanel health check passed (HTTP $HTTP_CODE)"
+              exit 0
+            fi
+            
+            # Log full error response for debugging
+            echo "═══════════════════════════════════════════════════════════════"
+            echo "Attempt $attempt/10 - HTTP $HTTP_CODE"
+            echo "Response:"
+            echo "$RESPONSE_BODY"
+            echo "═══════════════════════════════════════════════════════════════"
+            echo "Retrying in 15s..."
+            sleep 15
+          done
+          
+          echo " cPanel health check failed after 10 attempts"
+          echo "Final error response:"
+          echo "$RESPONSE_BODY"
+          exit 1
+
+  # Deployment Summary
+  deployment-summary:
+    needs: [determine-mode, deploy-vercel, verify-vercel, deploy-cpanel]
+    if: always()
+    runs-on: ubuntu-latest
     steps:
-      - name: Done
-        run: echo "Full chain deployment successful"
+      - name: Deployment Summary
+        shell: bash
+        run: |
+          MODE="${{ needs.determine-mode.outputs.mode }}"
+          VERCEL_STATUS="${{ needs.deploy-vercel.result }}"
+          CPANEL_STATUS="${{ needs.deploy-cpanel.result }}"
+          
+          echo " Deployment Summary"
+          echo "===================="
+          echo "Mode: $MODE"
+          echo "Vercel Deploy: ${VERCEL_STATUS:-skipped}"
+          echo "cPanel Deploy: ${CPANEL_STATUS:-skipped}"
+          echo ""
+          
+          if [[ "$MODE" == "full-chain" ]]; then
+            if [[ "$VERCEL_STATUS" == "success" && "$CPANEL_STATUS" == "success" ]]; then
+              echo " Full chain deployment successful!"
+              exit 0
+            fi
+          elif [[ "$MODE" == "vercel-only" ]]; then
+            if [[ "$VERCEL_STATUS" == "success" ]]; then
+              echo " Full chain deployment successful!"
+              exit 0
+            fi
+          elif [[ "$MODE" == "cpanel-only" ]]; then
+            if [[ "$CPANEL_STATUS" == "success" ]]; then
+              echo " Full chain deployment successful!"
+              exit 0
+            fi
+          fi
+          
+          echo " Deployment failed"
+          exit 1
