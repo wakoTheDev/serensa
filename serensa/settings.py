@@ -62,6 +62,17 @@ if DB_ENGINE == "django_mongodb_backend":
             "HOST": os.getenv("MONGODB_URI", "mongodb://127.0.0.1:27017/"),
         }
     }
+elif DB_ENGINE == "django.db.backends.postgresql":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", os.getenv("CPANEL_DB_NAME", "")),
+            "USER": os.getenv("POSTGRES_USER", os.getenv("CPANEL_DB_USER", "")),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", os.getenv("CPANEL_DB_PASSWORD", "")),
+            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        }
+    }
 else:
     DATABASES = {
         "default": {

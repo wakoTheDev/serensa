@@ -153,6 +153,7 @@ jobs:
         shell: bash
         run: |
           [[ -n "${{ secrets.CPANEL_HOST }}" ]] || { echo "Missing: CPANEL_HOST"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_PORT }}" ]] || { echo "Missing: CPANEL_PORT"; exit 1; }
           [[ -n "${{ secrets.CPANEL_USER }}" ]] || { echo "Missing: CPANEL_USER"; exit 1; }
           [[ -n "${{ secrets.CPANEL_SFTP_PASSWORD }}" ]] || { echo "Missing: CPANEL_SFTP_PASSWORD"; exit 1; }
           [[ -n "${{ secrets.CPANEL_DB_NAME }}" ]] || { echo "Missing: CPANEL_DB_NAME"; exit 1; }
@@ -221,25 +222,48 @@ jobs:
           
           echo " Code deployed to cPanel"
 
-      - name: Run PostgreSQL Migrations
+      - name: Run PostgreSQL Migrations On cPanel Host
         shell: bash
         run: |
-          export DB_ENGINE=django.db.backends.postgresql
-          export POSTGRES_DB=${{ secrets.CPANEL_DB_NAME }}
-          export POSTGRES_USER=${{ secrets.CPANEL_DB_USER }}
-          export POSTGRES_PASSWORD=${{ secrets.CPANEL_DB_PASSWORD }}
-          export POSTGRES_HOST=localhost
-          export POSTGRES_PORT=5432
-          
-          python manage.py migrate --noinput --settings=serensa.settings
-          
-          echo " Database migrations completed"
+          sudo apt-get update && sudo apt-get install -y sshpass openssh-client > /dev/null 2>&1
+
+          CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
+          CPANEL_PORT="${{ secrets.CPANEL_PORT }}"
+          CPANEL_USER="${{ secrets.CPANEL_USER }}"
+          CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
+          DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
+
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${CPANEL_PORT}" "${CPANEL_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
+
+          sshpass -p "${CPANEL_PASS}" ssh -p "${CPANEL_PORT}" "${CPANEL_USER}@${CPANEL_HOST}" "
+            set -e
+            cd ${DEPLOY_PATH}
+
+            export DB_ENGINE=django.db.backends.postgresql
+            export POSTGRES_DB='${{ secrets.CPANEL_DB_NAME }}'
+            export POSTGRES_USER='${{ secrets.CPANEL_DB_USER }}'
+            export POSTGRES_PASSWORD='${{ secrets.CPANEL_DB_PASSWORD }}'
+            export POSTGRES_HOST=localhost
+            export POSTGRES_PORT=5432
+
+            if [ -f /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate ]; then
+              . /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate
+            elif [ -f /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate ]; then
+              . /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate
+            fi
+
+            python manage.py showmigrations --settings=serensa.settings
+            python manage.py migrate --noinput --settings=serensa.settings
+          "
+
+          echo " Database migrations completed on cPanel host"
 
       - name: Restart cPanel Passenger App
         shell: bash
         run: |
           # Use SSH to touch restart.txt for Passenger app restart
-          sudo apt-get update && sudo apt-get install -y openssh-client > /dev/null 2>&1
+          sudo apt-get update && sudo apt-get install -y sshpass openssh-client > /dev/null 2>&1
           
           CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
           CPANEL_PORT="${{ secrets.CPANEL_PORT || 22 }}"
