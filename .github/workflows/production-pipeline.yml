@@ -238,7 +238,7 @@ jobs:
         shell: bash
         run: |
           # Use SSH to touch restart.txt for Passenger app restart
-          apt-get update && apt-get install -y openssh-client > /dev/null 2>&1
+          sudo apt-get update && sudo apt-get install -y openssh-client > /dev/null 2>&1
           
           CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
           CPANEL_PORT="${{ secrets.CPANEL_PORT || 22 }}"
@@ -255,7 +255,7 @@ jobs:
             || echo "  Restart via SSH - attempting alternative method..."
           
           # Alternative: Use Lftp to create restart.txt
-          apt-get install -y lftp > /dev/null 2>&1 || true
+          sudo apt-get install -y lftp > /dev/null 2>&1 || true
           
           echo " Passenger app restart triggered"
 
