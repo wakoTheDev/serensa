@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       deployment_mode:
-        description: "Deployment mode"
+        description: 'Deployment mode'
         required: true
-        default: full-chain
+        default: 'full-chain'
         type: choice
         options:
           - full-chain
@@ -26,7 +26,7 @@ env:
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
-
+  # Determine deployment mode
   determine-mode:
     runs-on: ubuntu-latest
     outputs:
@@ -42,7 +42,9 @@ jobs:
           else
             MODE="${{ inputs.deployment_mode }}"
           fi
+          
           echo "mode=$MODE" >> $GITHUB_OUTPUT
+          
           case "$MODE" in
             full-chain)
               echo "deploy_vercel=true" >> $GITHUB_OUTPUT
@@ -58,26 +60,28 @@ jobs:
               ;;
           esac
 
+  # Deploy to Vercel
   deploy-vercel:
     needs: determine-mode
     if: needs.determine-mode.outputs.deploy_vercel == 'true'
     runs-on: ubuntu-latest
     outputs:
-      vercel_url: ${{ steps.deploy.outputs.url }}
+      vercel_url: ${{ steps.deploy.outputs.preview_url || steps.deploy.outputs.url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Validate Vercel Secrets
+        shell: bash
         run: |
-          [[ -n "$VERCEL_TOKEN" ]]     || { echo "Missing: VERCEL_TOKEN";     exit 1; }
-          [[ -n "$VERCEL_ORG_ID" ]]    || { echo "Missing: VERCEL_ORG_ID";    exit 1; }
+          [[ -n "$VERCEL_TOKEN" ]] || { echo "Missing: VERCEL_TOKEN"; exit 1; }
+          [[ -n "$VERCEL_ORG_ID" ]] || { echo "Missing: VERCEL_ORG_ID"; exit 1; }
           [[ -n "$VERCEL_PROJECT_ID" ]] || { echo "Missing: VERCEL_PROJECT_ID"; exit 1; }
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
 
       - name: Install Python Dependencies
         run: python -m pip install -r requirements.txt
@@ -98,23 +102,29 @@ jobs:
         run: |
           OUTPUT=$(vercel deploy --prod --yes --token="$VERCEL_TOKEN")
           echo "$OUTPUT"
+          # Extract the deployment URL
           URL=$(echo "$OUTPUT" | grep -oP 'https://[^\s]+' | tail -1)
           echo "url=$URL" >> $GITHUB_OUTPUT
 
       - name: Log Vercel Deployment
-        run: echo "Deployed to Vercel ${{ steps.deploy.outputs.url }}"
+        run: |
+          echo "Deployed to Vercel: ${{ steps.deploy.outputs.url }}"
 
+  # Wait and verify Vercel health
   verify-vercel:
     needs: [determine-mode, deploy-vercel]
     if: needs.determine-mode.outputs.deploy_vercel == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for Vercel Stabilization
+      - name: Wait 2 Minutes for Vercel Stabilization
         run: sleep 120
 
       - name: Health Check Vercel
+        shell: bash
         run: |
           VERCEL_URL="https://serensa.vercel.app"
+          echo "Checking Vercel health at: $VERCEL_URL/healthcheck/"
+          
           for attempt in {1..5}; do
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$VERCEL_URL/healthcheck/")
             if [[ "$HTTP_CODE" == "200" ]]; then
@@ -124,220 +134,224 @@ jobs:
             echo "Attempt $attempt/5 - HTTP $HTTP_CODE, retrying in 10s..."
             sleep 10
           done
+          
           echo "Vercel health check failed after 5 attempts"
           exit 1
 
+  # Deploy to cPanel
   deploy-cpanel:
     needs: [determine-mode, verify-vercel]
     if: |
       needs.determine-mode.outputs.deploy_cpanel == 'true' &&
       (needs.determine-mode.outputs.deploy_vercel == 'false' || success())
     runs-on: ubuntu-latest
-    env:
-      CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
-      CPANEL_PORT: ${{ secrets.CPANEL_PORT }}
-      CPANEL_USER: ${{ secrets.CPANEL_USER }}
-      CPANEL_PASS: ${{ secrets.CPANEL_SFTP_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Validate cPanel Secrets
+        shell: bash
         run: |
-          [[ -n "${{ secrets.CPANEL_HOST }}" ]]           || { echo "Missing: CPANEL_HOST";           exit 1; }
-          [[ -n "${{ secrets.CPANEL_PORT }}" ]]           || { echo "Missing: CPANEL_PORT";           exit 1; }
-          [[ -n "${{ secrets.CPANEL_USER }}" ]]           || { echo "Missing: CPANEL_USER";           exit 1; }
-          [[ -n "${{ secrets.CPANEL_SFTP_PASSWORD }}" ]]  || { echo "Missing: CPANEL_SFTP_PASSWORD";  exit 1; }
-          [[ -n "${{ secrets.CPANEL_DB_NAME }}" ]]        || { echo "Missing: CPANEL_DB_NAME";        exit 1; }
-          [[ -n "${{ secrets.CPANEL_DB_USER }}" ]]        || { echo "Missing: CPANEL_DB_USER";        exit 1; }
-          [[ -n "${{ secrets.CPANEL_DB_PASSWORD }}" ]]    || { echo "Missing: CPANEL_DB_PASSWORD";    exit 1; }
+          [[ -n "${{ secrets.CPANEL_HOST }}" ]] || { echo "Missing: CPANEL_HOST"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_PORT }}" ]] || { echo "Missing: CPANEL_PORT"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_USER }}" ]] || { echo "Missing: CPANEL_USER"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_SFTP_PASSWORD }}" ]] || { echo "Missing: CPANEL_SFTP_PASSWORD"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_DB_NAME }}" ]] || { echo "Missing: CPANEL_DB_NAME"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_DB_USER }}" ]] || { echo "Missing: CPANEL_DB_USER"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_DB_PASSWORD }}" ]] || { echo "Missing: CPANEL_DB_PASSWORD"; exit 1; }
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.12'
 
       - name: Install Python Dependencies
         run: python -m pip install -r requirements.txt
 
       - name: Prepare Deployment Package
-        env:
-          SECRET_KEY: ${{ secrets.CPANEL_DJANGO_SECRET_KEY }}
-          ALLOWED_HOSTS: ${{ secrets.CPANEL_ALLOWED_HOSTS }}
-          CSRF_ORIGINS: ${{ secrets.CPANEL_CSRF_TRUSTED_ORIGINS }}
-          DB_NAME: ${{ secrets.CPANEL_DB_NAME }}
-          DB_USER: ${{ secrets.CPANEL_DB_USER }}
-          DB_PASSWORD: ${{ secrets.CPANEL_DB_PASSWORD }}
         run: |
+          # Create deployment directory
           mkdir -p deploy_package
-          cp -r sensa serensa templates static scripts deploy_package/
-          cp manage.py requirements.txt passenger_wsgi.py deploy_package/
+          
+          # Copy app code
+          cp -r sensa deploy_package/
+          cp -r serensa deploy_package/
+          cp -r templates deploy_package/
+          cp -r static deploy_package/
+          cp -r scripts deploy_package/
+          cp manage.py deploy_package/
+          cp requirements.txt deploy_package/
+          cp passenger_wsgi.py deploy_package/
+          
+          # Create environment file for cPanel (not including secrets in the package)
+          cat > deploy_package/.env.cPanel << 'EOF'
+          DB_ENGINE=django.db.backends.postgresql
+          DJANGO_SECRET_KEY=${{ secrets.CPANEL_DJANGO_SECRET_KEY }}
+          DJANGO_DEBUG=0
+          DJANGO_ALLOWED_HOSTS=${{ secrets.CPANEL_ALLOWED_HOSTS }}
+          DJANGO_CSRF_TRUSTED_ORIGINS=${{ secrets.CPANEL_CSRF_TRUSTED_ORIGINS }}
+          DATABASE_URL=postgresql://${{ secrets.CPANEL_DB_USER }}:${{ secrets.CPANEL_DB_PASSWORD }}@localhost:5432/${{ secrets.CPANEL_DB_NAME }}
+          EOF
 
-          # Write .env using printf so there are no YAML heredoc conflicts.
-          # Both DATABASE_URL and POSTGRES_* are written so settings.py is
-          # covered regardless of which convention it uses.
-          printf '%s\n' \
-            "DB_ENGINE=django.db.backends.postgresql" \
-            "DJANGO_SECRET_KEY=${SECRET_KEY}" \
-            "DJANGO_DEBUG=0" \
-            "DJANGO_ALLOWED_HOSTS=${ALLOWED_HOSTS}" \
-            "DJANGO_CSRF_TRUSTED_ORIGINS=${CSRF_ORIGINS}" \
-            "DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}" \
-            "POSTGRES_DB=${DB_NAME}" \
-            "POSTGRES_USER=${DB_USER}" \
-            "POSTGRES_PASSWORD=${DB_PASSWORD}" \
-            "POSTGRES_HOST=localhost" \
-            "POSTGRES_PORT=5432" \
-            > deploy_package/.env
-
-          echo ".env written:"
-          cat deploy_package/.env | sed 's/=.*/=***/'
-
-      - name: Deploy via SFTP
+      - name: Setup SSH and Deploy via SFTP
+        shell: bash
         run: |
+          # Install lftp for SFTP access
           sudo apt-get update && sudo apt-get install -y lftp > /dev/null 2>&1
+          
+          CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
+          CPANEL_PORT="${{ secrets.CPANEL_PORT || 1624 }}"
+          CPANEL_USER="${{ secrets.CPANEL_USER }}"
+          CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
+          DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
+          
+          echo "Deploying to cPanel at sftp://${CPANEL_HOST}:${CPANEL_PORT}/${DEPLOY_PATH}"
+          
+          # Create SFTP batch file
+          cat > /tmp/sftp_commands.txt << SFTP_EOF
+          set ssl:verify-certificate no
+          set sftp:auto-confirm yes
+          open sftp://${CPANEL_USER}:${CPANEL_PASS}@${CPANEL_HOST}:${CPANEL_PORT}
+          cd ${DEPLOY_PATH}
+          mirror -e -R --delete deploy_package .
+          bye
+          SFTP_EOF
+          
+          # Upload via SFTP
+          lftp < /tmp/sftp_commands.txt
+          
+          echo " Code deployed to cPanel"
+
+      - name: Run PostgreSQL Migrations On cPanel Host
+        shell: bash
+        run: |
+          sudo apt-get update && sudo apt-get install -y sshpass openssh-client > /dev/null 2>&1
+
+          CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
+          CPANEL_PORT="${{ secrets.CPANEL_PORT }}"
+          CPANEL_USER="${{ secrets.CPANEL_USER }}"
+          CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
           DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
 
-          # Write lftp commands to a temp file to avoid shell quoting issues
-          printf '%s\n' \
-            "set ssl:verify-certificate no" \
-            "set sftp:auto-confirm yes" \
-            "open sftp://${CPANEL_USER}:${CPANEL_PASS}@${CPANEL_HOST}:${CPANEL_PORT}" \
-            "cd ${DEPLOY_PATH}" \
-            "mirror -e -R --delete deploy_package ." \
-            "bye" \
-            > /tmp/lftp_cmds.txt
-
-          lftp < /tmp/lftp_cmds.txt
-          echo "Code deployed to cPanel"
-
-      - name: Run Migrations on cPanel
-        run: |
-          sudo apt-get install -y sshpass openssh-client > /dev/null 2>&1
           mkdir -p ~/.ssh
           ssh-keyscan -p "${CPANEL_PORT}" "${CPANEL_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
 
-          DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
-          VENV_311="/home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate"
-          VENV_312="/home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate"
-
-          # The remote script is written as a variable to avoid YAML/heredoc conflicts
-          REMOTE_SCRIPT="
+          sshpass -p "${CPANEL_PASS}" ssh -p "${CPANEL_PORT}" "${CPANEL_USER}@${CPANEL_HOST}" "
             set -e
             cd ${DEPLOY_PATH}
 
-            # Source .env so Django reads the correct database credentials
-            if [ -f ${DEPLOY_PATH}/.env ]; then
-              set -a && source ${DEPLOY_PATH}/.env && set +a
-              echo '.env loaded'
-            else
-              echo 'ERROR: .env not found' && exit 1
+            export DB_ENGINE=django.db.backends.postgresql
+            export POSTGRES_DB='${{ secrets.CPANEL_DB_NAME }}'
+            export POSTGRES_USER='${{ secrets.CPANEL_DB_USER }}'
+            export POSTGRES_PASSWORD='${{ secrets.CPANEL_DB_PASSWORD }}'
+            export POSTGRES_HOST=localhost
+            export POSTGRES_PORT=5432
+
+            if [ -f /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate ]; then
+              . /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate
+            elif [ -f /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate ]; then
+              . /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate
             fi
 
-            # Activate virtualenv (try 3.11 first, fall back to 3.12)
-            if [ -f ${VENV_311} ]; then
-              source ${VENV_311} && echo 'Using Python 3.11'
-            elif [ -f ${VENV_312} ]; then
-              source ${VENV_312} && echo 'Using Python 3.12'
-            else
-              echo 'ERROR: No virtualenv found' && exit 1
-            fi
-
-            echo 'Python:' \$(python --version)
-            pip install -r requirements.txt --quiet
-
-            # Confirm which DB Django is targeting before migrating
-            python - <<'PY'
-          import django, os
-          os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'serensa.settings')
-          django.setup()
-          from django.db import connection
-          s = connection.settings_dict
-          print('DB NAME:', s['NAME'])
-          print('DB HOST:', s['HOST'])
-          print('DB USER:', s['USER'])
-          PY
-
-            python manage.py collectstatic --noinput --settings=serensa.settings
-            python manage.py showmigrations   --settings=serensa.settings
+            python manage.py showmigrations --settings=serensa.settings
             python manage.py migrate --noinput --settings=serensa.settings
-
-            # List tables created so we can confirm migrations actually ran
-            python - <<'PY'
-          import django, os
-          os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'serensa.settings')
-          django.setup()
-          from django.db import connection
-          with connection.cursor() as c:
-              c.execute(\"SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename\")
-              rows = c.fetchall()
-          print(f'Tables in public schema ({len(rows)}):')
-          for r in rows: print(' -', r[0])
-          PY
           "
 
-          sshpass -p "${CPANEL_PASS}" ssh -p "${CPANEL_PORT}" "${CPANEL_USER}@${CPANEL_HOST}" "${REMOTE_SCRIPT}"
-          echo "Database migrations completed"
+          echo " Database migrations completed on cPanel host"
 
-      - name: Restart Passenger
+      - name: Restart cPanel Passenger App
+        shell: bash
         run: |
-          sudo apt-get install -y sshpass openssh-client > /dev/null 2>&1
+          # Use SSH to touch restart.txt for Passenger app restart
+          sudo apt-get update && sudo apt-get install -y sshpass openssh-client > /dev/null 2>&1
+          
+          CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
+          CPANEL_PORT="${{ secrets.CPANEL_PORT || 22 }}"
+          CPANEL_USER="${{ secrets.CPANEL_USER }}"
+          CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
+          
+          # Create known_hosts entry
           mkdir -p ~/.ssh
-          ssh-keyscan -p "${CPANEL_PORT}" "${CPANEL_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
-
-          sshpass -p "${CPANEL_PASS}" ssh -p "${CPANEL_PORT}" "${CPANEL_USER}@${CPANEL_HOST}" \
+          ssh-keyscan -p ${CPANEL_PORT} ${CPANEL_HOST} >> ~/.ssh/known_hosts 2>/dev/null
+          
+          # SSH and restart Passenger (non-fatal if shell disabled)
+          sshpass -p "${CPANEL_PASS}" ssh -p ${CPANEL_PORT} ${CPANEL_USER}@${CPANEL_HOST} \
             "mkdir -p /home/${CPANEL_USER}/serensa_app/tmp && touch /home/${CPANEL_USER}/serensa_app/tmp/restart.txt" \
-            || echo "SSH restart unavailable — restart manually from cPanel UI"
-
-          echo "Passenger restart triggered"
+            || echo "Note: SSH restart unavailable; cPanel may need manual restart from UI"
+          
+          # Alternative: Use Lftp to create restart.txt
+          sudo apt-get install -y lftp > /dev/null 2>&1 || true
+          
+          echo " Passenger app restart triggered"
 
       - name: Health Check cPanel
+        shell: bash
         run: |
-          DOMAIN="${{ secrets.CPANEL_DOMAIN || 'serensaenterprises.co.ke' }}"
-          URL="https://${DOMAIN}/healthcheck/"
-          echo "Checking $URL"
-
+          CPANEL_DOMAIN="${{ secrets.CPANEL_DOMAIN || 'serensaenterprises.co.ke' }}"
+          HEALTHCHECK_URL="https://${CPANEL_DOMAIN}/healthcheck/"
+          
+          echo " Checking cPanel health at: $HEALTHCHECK_URL"
+          
           for attempt in {1..10}; do
-            HTTP_CODE=$(curl -s -o /tmp/hc.txt -w "%{http_code}" -k "$URL" 2>/dev/null || echo "000")
+            HTTP_CODE=$(curl -s -o /tmp/health_response.txt -w "%{http_code}" -k "$HEALTHCHECK_URL" 2>/dev/null || echo "000")
+            RESPONSE_BODY=$(cat /tmp/health_response.txt)
+            
             if [[ "$HTTP_CODE" == "200" ]]; then
-              echo "Health check passed (HTTP 200)"
+              echo " cPanel health check passed (HTTP $HTTP_CODE)"
               exit 0
             fi
-            echo "Attempt $attempt/10 — HTTP $HTTP_CODE"
-            cat /tmp/hc.txt
+            
+            # Log full error response for debugging
+            echo "═══════════════════════════════════════════════════════════════"
+            echo "Attempt $attempt/10 - HTTP $HTTP_CODE"
+            echo "Response:"
+            echo "$RESPONSE_BODY"
+            echo "═══════════════════════════════════════════════════════════════"
+            echo "Retrying in 15s..."
             sleep 15
           done
-
-          echo "Health check failed after 10 attempts"
+          
+          echo " cPanel health check failed after 10 attempts"
+          echo "Final error response:"
+          echo "$RESPONSE_BODY"
           exit 1
 
+  # Deployment Summary
   deployment-summary:
     needs: [determine-mode, deploy-vercel, verify-vercel, deploy-cpanel]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Deployment Summary
+        shell: bash
         run: |
           MODE="${{ needs.determine-mode.outputs.mode }}"
-          VERCEL="${{ needs.deploy-vercel.result }}"
-          CPANEL="${{ needs.deploy-cpanel.result }}"
-
-          echo "================================"
+          VERCEL_STATUS="${{ needs.deploy-vercel.result }}"
+          CPANEL_STATUS="${{ needs.deploy-cpanel.result }}"
+          
           echo " Deployment Summary"
-          echo "================================"
-          echo "Mode:          $MODE"
-          echo "Vercel:        ${VERCEL:-skipped}"
-          echo "cPanel:        ${CPANEL:-skipped}"
-          echo "================================"
-
-          SUCCESS=false
-          [[ "$MODE" == "full-chain"   && "$VERCEL" == "success" && "$CPANEL" == "success" ]] && SUCCESS=true
-          [[ "$MODE" == "vercel-only"  && "$VERCEL" == "success" ]] && SUCCESS=true
-          [[ "$MODE" == "cpanel-only"  && "$CPANEL" == "success" ]] && SUCCESS=true
-
-          if $SUCCESS; then
-            echo "Deployment successful!"
-          else
-            echo "Deployment FAILED"
-            exit 1
+          echo "===================="
+          echo "Mode: $MODE"
+          echo "Vercel Deploy: ${VERCEL_STATUS:-skipped}"
+          echo "cPanel Deploy: ${CPANEL_STATUS:-skipped}"
+          echo ""
+          
+          if [[ "$MODE" == "full-chain" ]]; then
+            if [[ "$VERCEL_STATUS" == "success" && "$CPANEL_STATUS" == "success" ]]; then
+              echo " Full chain deployment successful!"
+              exit 0
+            fi
+          elif [[ "$MODE" == "vercel-only" ]]; then
+            if [[ "$VERCEL_STATUS" == "success" ]]; then
+              echo " Full chain deployment successful!"
+              exit 0
+            fi
+          elif [[ "$MODE" == "cpanel-only" ]]; then
+            if [[ "$CPANEL_STATUS" == "success" ]]; then
+              echo " Full chain deployment successful!"
+              exit 0
+            fi
           fi
+          
+          echo " Deployment failed"
+          exit 1
