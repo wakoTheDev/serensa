@@ -180,6 +180,7 @@ jobs:
           cp -r scripts deploy_package/
           cp manage.py deploy_package/
           cp requirements.txt deploy_package/
+          cp passenger_wsgi.py deploy_package/
           
           # Create environment file for cPanel (not including secrets in the package)
           cat > deploy_package/.env.cPanel << 'EOF'
