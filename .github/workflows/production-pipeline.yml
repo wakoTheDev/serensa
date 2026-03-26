@@ -153,7 +153,8 @@ jobs:
         shell: bash
         run: |
           [[ -n "${{ secrets.CPANEL_HOST }}" ]] || { echo "Missing: CPANEL_HOST"; exit 1; }
-          [[ -n "${{ secrets.CPANEL_PORT }}" ]] || { echo "Missing: CPANEL_PORT"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_SFTP_PORT }}" ]] || { echo "Missing: CPANEL_SFTP_PORT"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_SSH_PORT }}" ]] || { echo "Missing: CPANEL_SSH_PORT"; exit 1; }
           [[ -n "${{ secrets.CPANEL_USER }}" ]] || { echo "Missing: CPANEL_USER"; exit 1; }
           [[ -n "${{ secrets.CPANEL_SFTP_PASSWORD }}" ]] || { echo "Missing: CPANEL_SFTP_PASSWORD"; exit 1; }
           [[ -n "${{ secrets.CPANEL_DB_NAME }}" ]] || { echo "Missing: CPANEL_DB_NAME"; exit 1; }
@@ -200,7 +201,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y lftp > /dev/null 2>&1
           
           CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
-          CPANEL_PORT="${{ secrets.CPANEL_PORT || 1624 }}"
+          CPANEL_PORT="${{ secrets.CPANEL_SFTP_PORT }}"
           CPANEL_USER="${{ secrets.CPANEL_USER }}"
           CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
           DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
@@ -228,7 +229,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y sshpass openssh-client > /dev/null 2>&1
 
           CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
-          CPANEL_PORT="${{ secrets.CPANEL_PORT }}"
+          CPANEL_PORT="${{ secrets.CPANEL_SSH_PORT }}"
           CPANEL_USER="${{ secrets.CPANEL_USER }}"
           CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
           DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
@@ -253,6 +254,8 @@ jobs:
               . /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate
             fi
 
+            python -m pip install --upgrade pip
+            python -m pip install -r requirements.txt
             python manage.py showmigrations --settings=serensa.settings
             python manage.py migrate --noinput --settings=serensa.settings
           "
@@ -266,7 +269,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y sshpass openssh-client > /dev/null 2>&1
           
           CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
-          CPANEL_PORT="${{ secrets.CPANEL_PORT || 22 }}"
+          CPANEL_PORT="${{ secrets.CPANEL_SSH_PORT }}"
           CPANEL_USER="${{ secrets.CPANEL_USER }}"
           CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
           
