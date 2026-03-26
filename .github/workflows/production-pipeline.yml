@@ -201,7 +201,7 @@ jobs:
           CPANEL_PORT="${{ secrets.CPANEL_PORT || 1624 }}"
           CPANEL_USER="${{ secrets.CPANEL_USER }}"
           CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
-          DEPLOY_PATH="/home/${CPANEL_USER}/public_html"
+          DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
           
           echo "Deploying to cPanel at sftp://${CPANEL_HOST}:${CPANEL_PORT}/${DEPLOY_PATH}"
           
@@ -251,7 +251,7 @@ jobs:
           
           # SSH and restart Passenger
           sshpass -p "${CPANEL_PASS}" ssh -p ${CPANEL_PORT} ${CPANEL_USER}@${CPANEL_HOST} \
-            "mkdir -p /home/${CPANEL_USER}/public_html/tmp && touch /home/${CPANEL_USER}/public_html/tmp/restart.txt" \
+            "mkdir -p /home/${CPANEL_USER}/serensa_app/tmp && touch /home/${CPANEL_USER}/serensa_app/tmp/restart.txt" \
             || echo "  Restart via SSH - attempting alternative method..."
           
           # Alternative: Use Lftp to create restart.txt
