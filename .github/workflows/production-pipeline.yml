@@ -250,10 +250,10 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p ${CPANEL_PORT} ${CPANEL_HOST} >> ~/.ssh/known_hosts 2>/dev/null
           
-          # SSH and restart Passenger
+          # SSH and restart Passenger (non-fatal if shell disabled)
           sshpass -p "${CPANEL_PASS}" ssh -p ${CPANEL_PORT} ${CPANEL_USER}@${CPANEL_HOST} \
             "mkdir -p /home/${CPANEL_USER}/serensa_app/tmp && touch /home/${CPANEL_USER}/serensa_app/tmp/restart.txt" \
-            || echo "  Restart via SSH - attempting alternative method..."
+            || echo "Note: SSH restart unavailable; cPanel may need manual restart from UI"
           
           # Alternative: Use Lftp to create restart.txt
           sudo apt-get install -y lftp > /dev/null 2>&1 || true
@@ -269,16 +269,27 @@ jobs:
           echo " Checking cPanel health at: $HEALTHCHECK_URL"
           
           for attempt in {1..10}; do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -k "$HEALTHCHECK_URL" 2>/dev/null || echo "000")
+            HTTP_CODE=$(curl -s -o /tmp/health_response.txt -w "%{http_code}" -k "$HEALTHCHECK_URL" 2>/dev/null || echo "000")
+            RESPONSE_BODY=$(cat /tmp/health_response.txt)
+            
             if [[ "$HTTP_CODE" == "200" ]]; then
               echo " cPanel health check passed (HTTP $HTTP_CODE)"
               exit 0
             fi
-            echo " Attempt $attempt/10 - HTTP $HTTP_CODE, retrying in 15s..."
+            
+            # Log full error response for debugging
+            echo "═══════════════════════════════════════════════════════════════"
+            echo "Attempt $attempt/10 - HTTP $HTTP_CODE"
+            echo "Response:"
+            echo "$RESPONSE_BODY"
+            echo "═══════════════════════════════════════════════════════════════"
+            echo "Retrying in 15s..."
             sleep 15
           done
           
           echo " cPanel health check failed after 10 attempts"
+          echo "Final error response:"
+          echo "$RESPONSE_BODY"
           exit 1
 
   # Deployment Summary
