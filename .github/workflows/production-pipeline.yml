@@ -58,12 +58,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Wait for stabilization
+      - name: Wait
         run: sleep 120
 
       - name: Health Check
         run: |
-          URL="https://serensa.vercel.app/healthcheck/"
+          URL="$https://serensa.vercel.app/healthcheck/"
 
           for i in {1..5}; do
             CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
@@ -74,6 +74,7 @@ jobs:
             sleep 10
           done
 
+          echo "Vercel failed"
           exit 1
 
   # -------------------------------
@@ -91,10 +92,17 @@ jobs:
           [[ -n "${{ secrets.CPANEL_HOST }}" ]] || exit 1
           [[ -n "${{ secrets.CPANEL_USER }}" ]] || exit 1
 
-      - name: Prepare Package
+      # ✅ FIXED STEP HERE
+      - name: Prepare Package (FIXED)
         run: |
           mkdir -p deploy_package
-          cp -r * deploy_package/
+          rsync -av \
+            --exclude 'deploy_package' \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '__pycache__' \
+            --exclude '*.pyc' \
+            ./ deploy_package/
 
       - name: Upload via SFTP
         run: |
@@ -116,8 +124,16 @@ jobs:
           ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} << 'EOF'
 
           cd ~/serensa_app
+
+          echo "Installing dependencies..."
+          python3 -m pip install --upgrade pip
           python3 -m pip install -r requirements.txt
+
+          echo "Running migrations..."
           python3 manage.py migrate --noinput
+
+          echo "Restarting Passenger..."
+          mkdir -p tmp && touch tmp/restart.txt
 
           EOF
 
@@ -130,5 +146,4 @@ jobs:
 
     steps:
       - name: Done
-        run: |
-          echo " Full chain deployment successful"
+        run: echo "Full chain deployment successful"
