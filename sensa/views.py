@@ -32,6 +32,11 @@ from .services import fetch_and_store_jenga_equity_balance
 User = get_user_model()
 
 
+def healthcheck(request):
+    """Health check endpoint for deployment verification."""
+    return JsonResponse({"status": "ok", "service": "serensa"}, status=200)
+
+
 class UserLoginView(LoginView):
     template_name = "registration/login.html"
     authentication_form = PhoneLoginForm
