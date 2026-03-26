@@ -63,7 +63,7 @@ jobs:
 
       - name: Health Check
         run: |
-          URL="${{ needs.deploy-vercel.outputs.vercel_url }}/healthcheck/"
+          URL="https://serensa.vercel.app/healthcheck/"
 
           for i in {1..5}; do
             CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
