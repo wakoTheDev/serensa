@@ -66,7 +66,7 @@ jobs:
     if: needs.determine-mode.outputs.deploy_vercel == 'true'
     runs-on: ubuntu-latest
     outputs:
-      vercel_url: ${{ steps.deploy.outputs.preview_url || steps.deploy.outputs.url }}
+      vercel_url: ${{ steps.deploy.outputs.url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -138,18 +138,192 @@ jobs:
           echo "Vercel health check failed after 5 attempts"
           exit 1
 
-  # Deploy to cPanel
-  deploy-cpanel:
-    needs: [determine-mode, deploy-vercel, verify-vercel]
+  # Deploy to cPanel (after Vercel in full-chain mode)
+  deploy-cpanel-full-chain:
+    needs: determine-mode
     if: |
       needs.determine-mode.outputs.deploy_cpanel == 'true' &&
-      (
-        needs.determine-mode.outputs.deploy_vercel == 'false' ||
-        (
-          needs.deploy-vercel.result == 'success' &&
-          (needs.verify-vercel.result == 'success' || needs.verify-vercel.result == 'skipped')
-        )
-      )
+      needs.determine-mode.outputs.deploy_vercel == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate cPanel Secrets
+        shell: bash
+        run: |
+          [[ -n "${{ secrets.CPANEL_HOST }}" ]] || { echo "Missing: CPANEL_HOST"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_SFTP_PORT }}" ]] || { echo "Missing: CPANEL_SFTP_PORT"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_SSH_PORT }}" ]] || { echo "Missing: CPANEL_SSH_PORT"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_USER }}" ]] || { echo "Missing: CPANEL_USER"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_SFTP_PASSWORD }}" ]] || { echo "Missing: CPANEL_SFTP_PASSWORD"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_DB_NAME }}" ]] || { echo "Missing: CPANEL_DB_NAME"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_DB_USER }}" ]] || { echo "Missing: CPANEL_DB_USER"; exit 1; }
+          [[ -n "${{ secrets.CPANEL_DB_PASSWORD }}" ]] || { echo "Missing: CPANEL_DB_PASSWORD"; exit 1; }
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python Dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Prepare Deployment Package
+        run: |
+          # Create deployment directory
+          mkdir -p deploy_package
+
+          # Copy app code
+          cp -r sensa deploy_package/
+          cp -r serensa deploy_package/
+          cp -r templates deploy_package/
+          cp -r static deploy_package/
+          cp -r scripts deploy_package/
+          cp manage.py deploy_package/
+          cp requirements.txt deploy_package/
+          cp passenger_wsgi.py deploy_package/
+
+          # Create environment file for cPanel (not including secrets in the package)
+          cat > deploy_package/.env.cPanel << 'EOF'
+          DB_ENGINE=django.db.backends.postgresql
+          DJANGO_SECRET_KEY=${{ secrets.CPANEL_DJANGO_SECRET_KEY }}
+          DJANGO_DEBUG=0
+          DJANGO_ALLOWED_HOSTS=${{ secrets.CPANEL_ALLOWED_HOSTS }}
+          DJANGO_CSRF_TRUSTED_ORIGINS=${{ secrets.CPANEL_CSRF_TRUSTED_ORIGINS }}
+          DATABASE_URL=postgresql://${{ secrets.CPANEL_DB_USER }}:${{ secrets.CPANEL_DB_PASSWORD }}@localhost:5432/${{ secrets.CPANEL_DB_NAME }}
+          EOF
+
+      - name: Setup SSH and Deploy via SFTP
+        shell: bash
+        run: |
+          # Install lftp for SFTP access
+          sudo apt-get update && sudo apt-get install -y lftp > /dev/null 2>&1
+
+          CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
+          CPANEL_PORT="${{ secrets.CPANEL_SFTP_PORT }}"
+          CPANEL_USER="${{ secrets.CPANEL_USER }}"
+          CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
+          DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
+
+          echo "Deploying to cPanel at sftp://${CPANEL_HOST}:${CPANEL_PORT}/${DEPLOY_PATH}"
+
+          # Create SFTP batch file
+          cat > /tmp/sftp_commands.txt << SFTP_EOF
+          set ssl:verify-certificate no
+          set sftp:auto-confirm yes
+          open sftp://${CPANEL_USER}:${CPANEL_PASS}@${CPANEL_HOST}:${CPANEL_PORT}
+          cd ${DEPLOY_PATH}
+          mirror -e -R --delete deploy_package .
+          bye
+          SFTP_EOF
+
+          # Upload via SFTP
+          lftp < /tmp/sftp_commands.txt
+
+          echo " Code deployed to cPanel"
+
+      - name: Run PostgreSQL Migrations On cPanel Host
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'echo "::error::cPanel migration step failed at line $LINENO. Check logs above for the failing command and remote stderr output."' ERR
+
+          echo "==============================================================="
+          echo "STEP: Install SSH tooling"
+          echo "==============================================================="
+          sudo apt-get update
+          sudo apt-get install -y sshpass openssh-client
+
+          CPANEL_HOST="${{ secrets.CPANEL_HOST }}"
+          CPANEL_PORT="${{ secrets.CPANEL_SSH_PORT }}"
+          CPANEL_USER="${{ secrets.CPANEL_USER }}"
+          CPANEL_PASS="${{ secrets.CPANEL_SFTP_PASSWORD }}"
+          DEPLOY_PATH="/home/${CPANEL_USER}/serensa_app"
+
+          echo "==============================================================="
+          echo "STEP: Local pre-checks"
+          echo "==============================================================="
+          echo "Host: ${CPANEL_HOST}"
+          echo "Port: ${CPANEL_PORT}"
+          echo "User: ${CPANEL_USER}"
+          echo "Deploy path: ${DEPLOY_PATH}"
+
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${CPANEL_PORT}" "${CPANEL_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          echo "==============================================================="
+          echo "STEP: SSH connectivity test"
+          echo "==============================================================="
+          if ! sshpass -p "${CPANEL_PASS}" ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -p "${CPANEL_PORT}" "${CPANEL_USER}@${CPANEL_HOST}" "echo 'SSH OK: connected to \\$(hostname)'"; then
+            echo "::error::SSH connection failed. Check CPANEL_HOST/CPANEL_SSH_PORT/CPANEL_USER/CPANEL_SFTP_PASSWORD and server SSH access."
+            exit 1
+          fi
+
+          echo "==============================================================="
+          echo "STEP: Run remote dependency install + migrations"
+          echo "==============================================================="
+          if ! sshpass -p "${CPANEL_PASS}" ssh -tt -p "${CPANEL_PORT}" "${CPANEL_USER}@${CPANEL_HOST}" "
+            set -euo pipefail
+            echo '--- Remote whoami ---'
+            whoami
+            echo '--- Remote pwd ---'
+            pwd
+            echo '--- Verify deploy path ---'
+            ls -la '${DEPLOY_PATH}'
+            cd '${DEPLOY_PATH}'
+
+            export DB_ENGINE=django.db.backends.postgresql
+            export POSTGRES_DB='${{ secrets.CPANEL_DB_NAME }}'
+            export POSTGRES_USER='${{ secrets.CPANEL_DB_USER }}'
+            export POSTGRES_PASSWORD='${{ secrets.CPANEL_DB_PASSWORD }}'
+            export POSTGRES_HOST=localhost
+            export POSTGRES_PORT=5432
+
+            echo '--- Detect virtualenv ---'
+            if [ -f /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate ]; then
+              . /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate
+              echo 'Activated: /home/${CPANEL_USER}/virtualenv/serensa_app/3.12/bin/activate'
+            elif [ -f /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate ]; then
+              . /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate
+              echo 'Activated: /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/activate'
+            else
+              echo 'No expected virtualenv activate script found'
+            fi
+
+            echo '--- Python & Pip ---'
+            command -v python || true
+            python --version || true
+            pip --version || true
+
+            echo '--- Install dependencies ---'
+            if [ -f requirements.txt ]; then
+              pip install -r requirements.txt
+            else
+              echo 'requirements.txt not found in deploy path'
+              exit 30
+            fi
+
+            echo '--- Run Django migrations ---'
+            if ! python manage.py migrate --noinput; then
+              echo 'Migration command failed on remote host'
+              exit 31
+            fi
+
+            echo '--- Migration completed successfully ---'
+          "; then
+            echo "::error::Remote migration execution failed. Verify virtualenv path, Python dependencies, DB credentials, and PostgreSQL reachability from cPanel host."
+            exit 1
+          fi
+
+          echo "Migrations completed on cPanel host"
+
+  # Deploy to cPanel directly when mode is cpanel-only
+  deploy-cpanel-only:
+    needs: determine-mode
+    if: |
+      needs.determine-mode.outputs.deploy_cpanel == 'true' &&
+      needs.determine-mode.outputs.deploy_vercel == 'false'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -233,6 +407,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          trap 'echo "::error::cPanel migration step failed at line $LINENO. Check logs above for the failing command and remote stderr output."' ERR
 
           echo "==============================================================="
           echo "STEP: Install SSH tooling"
@@ -298,6 +473,30 @@ jobs:
 
             echo '--- Python & Pip ---'
             command -v python || true
+            python --version || true
+            pip --version || true
+
+            echo '--- Install dependencies ---'
+            if [ -f requirements.txt ]; then
+              pip install -r requirements.txt
+            else
+              echo 'requirements.txt not found in deploy path'
+              exit 30
+            fi
+
+            echo '--- Run Django migrations ---'
+            if ! python manage.py migrate --noinput; then
+              echo 'Migration command failed on remote host'
+              exit 31
+            fi
+
+            echo '--- Migration completed successfully ---'
+          "; then
+            echo "::error::Remote migration execution failed. Verify virtualenv path, Python dependencies, DB credentials, and PostgreSQL reachability from cPanel host."
+            exit 1
+          fi
+
+          echo "Migrations completed on cPanel host"
             python --version || true
             python -m pip --version || true
 
