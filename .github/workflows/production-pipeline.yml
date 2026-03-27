@@ -35,6 +35,38 @@ jobs:
 
       - run: python -m pip install -r requirements.txt
 
+      - name: Verify cPanel Secret Availability (Pre-Create)
+        env:
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_DB_NAME: ${{ secrets.CPANEL_DB_NAME }}
+          CPANEL_DB_USER: ${{ secrets.CPANEL_DB_USER }}
+          CPANEL_DB_PASSWORD: ${{ secrets.CPANEL_DB_PASSWORD }}
+          CPANEL_DJANGO_SECRET_KEY: ${{ secrets.CPANEL_DJANGO_SECRET_KEY }}
+          CPANEL_ALLOWED_HOSTS: ${{ secrets.CPANEL_ALLOWED_HOSTS }}
+          CPANEL_CSRF_TRUSTED_ORIGINS: ${{ secrets.CPANEL_CSRF_TRUSTED_ORIGINS }}
+        run: |
+          set -e
+          python - << 'PY'
+          import os
+
+          checks = {
+              'CPANEL_USER': os.getenv('CPANEL_USER'),
+              'CPANEL_DB_NAME': os.getenv('CPANEL_DB_NAME'),
+              'CPANEL_DB_USER': os.getenv('CPANEL_DB_USER'),
+              'CPANEL_DB_PASSWORD': os.getenv('CPANEL_DB_PASSWORD'),
+              'CPANEL_DJANGO_SECRET_KEY': os.getenv('CPANEL_DJANGO_SECRET_KEY'),
+              'CPANEL_ALLOWED_HOSTS': os.getenv('CPANEL_ALLOWED_HOSTS'),
+              'CPANEL_CSRF_TRUSTED_ORIGINS': os.getenv('CPANEL_CSRF_TRUSTED_ORIGINS'),
+          }
+
+          for key, value in checks.items():
+              is_set = bool(value)
+              print(f'{key}_SET={is_set}')
+
+          pwd = checks['CPANEL_DB_PASSWORD'] or ''
+          print(f'CPANEL_DB_PASSWORD_LENGTH={len(pwd)}')
+          PY
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -134,6 +166,10 @@ jobs:
             printf 'CPANEL_DB_USER=%q\n' "$CPANEL_DB_USER"
             printf 'CPANEL_DB_PASSWORD=%q\n' "$CPANEL_DB_PASSWORD"
           } > deploy_package/.env.cPanel
+          test -s deploy_package/.env.cPanel
+          grep -q '^POSTGRES_PASSWORD=' deploy_package/.env.cPanel
+          grep -q '^CPANEL_DB_PASSWORD=' deploy_package/.env.cPanel
+          echo ".env.cPanel password keys present"
 
       - name: Deploy via SFTP
         run: |
