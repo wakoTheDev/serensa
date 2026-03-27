@@ -330,10 +330,27 @@ jobs:
               host=os.getenv('POSTGRES_HOST', 'localhost'),
               port=os.getenv('POSTGRES_PORT', '5432'),
           )
+
+          def mark_migration(cur, app, name):
+              cur.execute(
+                  """
+                  INSERT INTO django_migrations(app, name, applied)
+                  SELECT %s, %s, NOW()
+                  WHERE NOT EXISTS (
+                      SELECT 1 FROM django_migrations
+                      WHERE app = %s AND name = %s
+                  )
+                  """,
+                  (app, name, app, name),
+              )
+
+          def table_exists(cur, table_name):
+              cur.execute("SELECT to_regclass(%s)", (f"public.{table_name}",))
+              return cur.fetchone()[0] is not None
+
           try:
               with conn.cursor() as cur:
-                  cur.execute("SELECT to_regclass('public.django_content_type')")
-                  has_contenttypes_table = cur.fetchone()[0] is not None
+                  has_contenttypes_table = table_exists(cur, 'django_content_type')
 
                   cur.execute("""
                       SELECT 1
@@ -343,29 +360,29 @@ jobs:
                   """)
                   has_name_col = cur.fetchone() is not None
 
-                  cur.execute("SELECT to_regclass('public.django_migrations')")
-                  has_migrations_table = cur.fetchone()[0] is not None
+                  has_migrations_table = table_exists(cur, 'django_migrations')
 
-                  if has_contenttypes_table and not has_name_col and has_migrations_table:
-                      print('Legacy contenttypes schema detected (no name column); syncing django_migrations records')
-                      cur.execute("""
-                          INSERT INTO django_migrations(app, name, applied)
-                          SELECT 'contenttypes', '0001_initial', NOW()
-                          WHERE NOT EXISTS (
-                              SELECT 1 FROM django_migrations
-                              WHERE app = 'contenttypes' AND name = '0001_initial'
-                          )
-                      """)
-                      cur.execute("""
-                          INSERT INTO django_migrations(app, name, applied)
-                          SELECT 'contenttypes', '0002_remove_content_type_name', NOW()
-                          WHERE NOT EXISTS (
-                              SELECT 1 FROM django_migrations
-                              WHERE app = 'contenttypes' AND name = '0002_remove_content_type_name'
-                          )
-                      """)
+                  if has_migrations_table:
+                      if has_contenttypes_table and not has_name_col:
+                          print('Legacy contenttypes schema detected (no name column); syncing django_migrations records')
+                          mark_migration(cur, 'contenttypes', '0001_initial')
+                          mark_migration(cur, 'contenttypes', '0002_remove_content_type_name')
+                      else:
+                          print('No contenttypes migration-history sync required')
+
+                      if table_exists(cur, 'auth_permission'):
+                          print('auth_permission exists; marking auth.0001_initial as applied')
+                          mark_migration(cur, 'auth', '0001_initial')
+
+                      if table_exists(cur, 'django_admin_log'):
+                          print('django_admin_log exists; marking admin.0001_initial as applied')
+                          mark_migration(cur, 'admin', '0001_initial')
+
+                      if table_exists(cur, 'django_session'):
+                          print('django_session exists; marking sessions.0001_initial as applied')
+                          mark_migration(cur, 'sessions', '0001_initial')
                   else:
-                      print('No contenttypes migration-history sync required')
+                      print('django_migrations table missing; skipping migration-history sync')
               conn.commit()
           finally:
               conn.close()
