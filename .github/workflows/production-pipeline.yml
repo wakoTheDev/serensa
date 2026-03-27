@@ -144,7 +144,7 @@ jobs:
           sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p "$CPANEL_PORT" \
           -o StrictHostKeyChecking=no \
           ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} bash << 'ENDSSH'
-          source /home/qtmwmxfn/virtualenv/serensa_app/3.12/bin/activate
+          source /home/qtmwmxfn/virtualenv/serensa_app/3.11/bin/activate
           cd /home/qtmwmxfn/serensa_app
           python manage.py migrate --noinput --settings=serensa.settings
           ENDSSH
