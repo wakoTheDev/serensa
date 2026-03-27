@@ -256,3 +256,11 @@ And any app-level variables you use (for example Jenga credentials).
 - `.vercelignore` to keep deployment package clean
 
 After these secrets are configured, any commit pushed to `main` automatically runs migrations against the production database and then deploys to Vercel.
+
+## cPanel Deployment Notes
+
+- The production pipeline file is `.github/workflows/production-pipeline.yml`.
+- cPanel deploy package now includes `.htaccess` generated from `.htaccess.cpanel.template`.
+- The workflow replaces `__CPANEL_USER__` in that template using the `CPANEL_USER` secret before upload.
+- The pipeline is locked to full-chain deployment, so each run deploys to Vercel first and then cPanel.
+- `.github/workflows/vercel-deploy.yml` is manual-only (`workflow_dispatch`) to avoid bypassing full-chain auto deployment.

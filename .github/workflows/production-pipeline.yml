@@ -5,16 +5,6 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      deployment_mode:
-        description: 'Deployment mode'
-        required: true
-        default: 'full-chain'
-        type: choice
-        options:
-          - full-chain
-          - vercel-only
-          - cpanel-only
 
 concurrency:
   group: production-deployment
@@ -36,23 +26,10 @@ jobs:
       - name: Determine Deployment Mode
         id: set-mode
         run: |
-          MODE="${{ github.event_name == 'push' && echo 'full-chain' || echo '${{ inputs.deployment_mode }}' }}"
+          MODE="full-chain"
           echo "mode=$MODE" >> $GITHUB_OUTPUT
-
-          case "$MODE" in
-            full-chain)
-              echo "deploy_vercel=true" >> $GITHUB_OUTPUT
-              echo "deploy_cpanel=true" >> $GITHUB_OUTPUT
-              ;;
-            vercel-only)
-              echo "deploy_vercel=true" >> $GITHUB_OUTPUT
-              echo "deploy_cpanel=false" >> $GITHUB_OUTPUT
-              ;;
-            cpanel-only)
-              echo "deploy_vercel=false" >> $GITHUB_OUTPUT
-              echo "deploy_cpanel=true" >> $GITHUB_OUTPUT
-              ;;
-          esac
+          echo "deploy_vercel=true" >> $GITHUB_OUTPUT
+          echo "deploy_cpanel=true" >> $GITHUB_OUTPUT
 
   deploy-vercel:
     needs: determine-mode
@@ -117,8 +94,8 @@ jobs:
           exit 1
 
   deploy-cpanel:
-    needs: [determine-mode, verify-vercel]
-    if: needs.determine-mode.outputs.deploy_cpanel == 'true'
+    needs: [determine-mode, deploy-vercel, verify-vercel]
+    if: always() && needs.determine-mode.outputs.deploy_cpanel == 'true' && needs.verify-vercel.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -144,6 +121,8 @@ jobs:
           mkdir -p deploy_package
           cp -r sensa serensa templates static scripts deploy_package/
           cp manage.py requirements.txt passenger_wsgi.py deploy_package/
+          cp .htaccess.cpanel.template deploy_package/.htaccess
+          sed -i "s|__CPANEL_USER__|${{ secrets.CPANEL_USER }}|g" deploy_package/.htaccess
           cat > deploy_package/.env.cPanel << EOF
           DB_ENGINE=django.db.backends.postgresql
           DJANGO_SECRET_KEY=${{ secrets.CPANEL_DJANGO_SECRET_KEY }}

@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -53,6 +54,8 @@ TEMPLATES = [
 WSGI_APPLICATION = "serensa.wsgi.application"
 
 DB_ENGINE = os.getenv("DB_ENGINE", "django.db.backends.sqlite3")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+IS_POSTGRES_URL = DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")
 
 if DB_ENGINE == "django_mongodb_backend":
     DATABASES = {
@@ -62,17 +65,30 @@ if DB_ENGINE == "django_mongodb_backend":
             "HOST": os.getenv("MONGODB_URI", "mongodb://127.0.0.1:27017/"),
         }
     }
-elif DB_ENGINE == "django.db.backends.postgresql":
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.getenv("POSTGRES_DB", os.getenv("CPANEL_DB_NAME", "")),
-            "USER": os.getenv("POSTGRES_USER", os.getenv("CPANEL_DB_USER", "")),
-            "PASSWORD": os.getenv("POSTGRES_PASSWORD", os.getenv("CPANEL_DB_PASSWORD", "")),
-            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
-            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+elif DB_ENGINE == "django.db.backends.postgresql" or IS_POSTGRES_URL:
+    if IS_POSTGRES_URL:
+        parsed = urlparse(DATABASE_URL)
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": parsed.path.lstrip("/"),
+                "USER": unquote(parsed.username or ""),
+                "PASSWORD": unquote(parsed.password or ""),
+                "HOST": parsed.hostname or os.getenv("POSTGRES_HOST", "localhost"),
+                "PORT": str(parsed.port or os.getenv("POSTGRES_PORT", "5432")),
+            }
         }
-    }
+    else:
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": os.getenv("POSTGRES_DB", os.getenv("CPANEL_DB_NAME", "")),
+                "USER": os.getenv("POSTGRES_USER", os.getenv("CPANEL_DB_USER", "")),
+                "PASSWORD": os.getenv("POSTGRES_PASSWORD", os.getenv("CPANEL_DB_PASSWORD", "")),
+                "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+                "PORT": os.getenv("POSTGRES_PORT", "5432"),
+            }
+        }
 else:
     DATABASES = {
         "default": {
