@@ -323,6 +323,37 @@ jobs:
             # This marks unapplied migrations as applied so deployment continues with the live schema.
             python manage.py migrate --fake --noinput --settings=serensa.settings
 
+            # Reconcile live schema with current models: create missing sensa tables in place.
+            python3 - << 'PY'
+            import os
+            import django
+
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'serensa.settings')
+            django.setup()
+
+            from django.apps import apps
+            from django.db import connection
+
+            sensa_models = list(apps.get_app_config('sensa').get_models())
+
+            with connection.cursor() as cursor:
+              existing_tables = set(connection.introspection.table_names(cursor))
+
+            with connection.schema_editor() as schema_editor:
+              for model in sensa_models:
+                table = model._meta.db_table
+                if table in existing_tables:
+                  continue
+                print(f'Creating missing table: {table}')
+                schema_editor.create_model(model)
+                existing_tables.add(table)
+
+            if 'sensa_user' not in existing_tables:
+              raise RuntimeError('sensa_user is still missing after reconciliation')
+
+            print('Schema reconciliation completed')
+            PY
+
           python manage.py collectstatic --noinput --settings=serensa.settings
           echo "Migrations and collectstatic completed"
           ENDSSH
