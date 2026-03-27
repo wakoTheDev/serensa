@@ -72,25 +72,21 @@ elif DB_ENGINE == "django.db.backends.postgresql" or IS_POSTGRES_URL:
             "default": {
                 "ENGINE": "django.db.backends.postgresql",
                 "NAME": parsed.path.lstrip("/"),
-                "USER": unquote(parsed.username or "") or os.getenv(
-                    "POSTGRES_USER", os.getenv("CPANEL_DB_USER", os.getenv("CPANEL_USER", ""))
-                ),
-                "PASSWORD": unquote(parsed.password or "") or os.getenv(
-                    "POSTGRES_PASSWORD", os.getenv("CPANEL_DB_PASSWORD", "")
-                ),
-                "HOST": parsed.hostname or os.getenv("POSTGRES_HOST", "localhost"),
-                "PORT": str(parsed.port or os.getenv("POSTGRES_PORT", "5432")),
+                "USER": unquote(parsed.username or "") or os.getenv("POSTGRES_USER") or os.getenv("CPANEL_DB_USER") or os.getenv("CPANEL_USER") or "",
+                "PASSWORD": unquote(parsed.password or "") or os.getenv("POSTGRES_PASSWORD") or os.getenv("CPANEL_DB_PASSWORD") or "",
+                "HOST": parsed.hostname or os.getenv("POSTGRES_HOST") or "localhost",
+                "PORT": str(parsed.port or os.getenv("POSTGRES_PORT") or "5432"),
             }
         }
     else:
         DATABASES = {
             "default": {
                 "ENGINE": "django.db.backends.postgresql",
-                "NAME": os.getenv("POSTGRES_DB", os.getenv("CPANEL_DB_NAME", "")),
-                "USER": os.getenv("POSTGRES_USER", os.getenv("CPANEL_DB_USER", os.getenv("CPANEL_USER", ""))),
-                "PASSWORD": os.getenv("POSTGRES_PASSWORD", os.getenv("CPANEL_DB_PASSWORD", "")),
-                "HOST": os.getenv("POSTGRES_HOST", "localhost"),
-                "PORT": os.getenv("POSTGRES_PORT", "5432"),
+                "NAME": os.getenv("POSTGRES_DB") or os.getenv("CPANEL_DB_NAME") or "",
+                "USER": os.getenv("POSTGRES_USER") or os.getenv("CPANEL_DB_USER") or os.getenv("CPANEL_USER") or "",
+                "PASSWORD": os.getenv("POSTGRES_PASSWORD") or os.getenv("CPANEL_DB_PASSWORD") or "",
+                "HOST": os.getenv("POSTGRES_HOST") or "localhost",
+                "PORT": os.getenv("POSTGRES_PORT") or "5432",
             }
         }
 else:
