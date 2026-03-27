@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Wait 2 Minutes
-        run: sleep 120
+        run: sleep 30
 
       - name: Health Check Vercel
         run: |
