@@ -413,6 +413,7 @@ jobs:
 
           from django.db import DEFAULT_DB_ALIAS, connections
           from django.db.migrations.executor import MigrationExecutor
+          from django.db.migrations.operations.models import CreateModel
 
           conn = connections[DEFAULT_DB_ALIAS]
           executor = MigrationExecutor(conn)
@@ -430,7 +431,17 @@ jobs:
               'duplicate table',
               'DuplicateColumn',
               'duplicate column',
+              'already an object named',
+              'DuplicateObject',
           ]
+
+          def expected_tables_for_migration(migration):
+              tables = []
+              for op in migration.operations:
+                  if isinstance(op, CreateModel):
+                      db_table = (op.options or {}).get('db_table') or f"{migration.app_label}_{op.name.lower()}"
+                      tables.append(db_table)
+              return tables
 
           for migration in forward:
               label = f"{migration.app_label}.{migration.name}"
@@ -446,6 +457,18 @@ jobs:
 
               output = (result.stdout or '') + '\n' + (result.stderr or '')
               if any(marker in output for marker in duplicate_markers):
+                  if migration.initial:
+                      required_tables = expected_tables_for_migration(migration)
+                      if required_tables:
+                          with conn.cursor() as cursor:
+                              existing_tables = set(conn.introspection.table_names(cursor))
+                          missing_tables = [t for t in required_tables if t not in existing_tables]
+                          if missing_tables:
+                              print(f'{label} hit duplicate-object conflict, but some initial tables are missing; refusing unsafe fake.')
+                              print('Missing tables: ' + ', '.join(missing_tables))
+                              print(result.stdout)
+                              print(result.stderr)
+                              sys.exit(result.returncode)
                   print(f'{label} hit existing-object conflict; faking and continuing')
                   fake_result = subprocess.run(cmd + ['--fake'], text=True, capture_output=True)
                   if fake_result.returncode != 0:
