@@ -163,6 +163,9 @@ jobs:
             printf "DJANGO_DEBUG='%s'\n"                '0'
             printf "DJANGO_ALLOWED_HOSTS='%s'\n"        "${CPANEL_ALLOWED_HOSTS}"
             printf "DJANGO_CSRF_TRUSTED_ORIGINS='%s'\n" "${CPANEL_CSRF_TRUSTED_ORIGINS}"
+            printf "DATABASE_URL='%s'\n"                "postgresql://${CPANEL_DB_USER}:${CPANEL_DB_PASSWORD}@localhost:5432/${CPANEL_DB_NAME}"
+            printf "DB_USER='%s'\n"                     "${CPANEL_DB_USER}"
+            printf "DATABASE_PASSWORD='%s'\n"           "${CPANEL_DB_PASSWORD}"
             printf "POSTGRES_DB='%s'\n"                 "${CPANEL_DB_NAME}"
             printf "POSTGRES_USER='%s'\n"               "${CPANEL_DB_USER}"
             printf "POSTGRES_PASSWORD='%s'\n"           "${CPANEL_DB_PASSWORD}"
@@ -175,19 +178,42 @@ jobs:
 
           # Verify the env file was written correctly
           test -s deploy_package/.env.cPanel           || { echo ".env.cPanel is empty"; exit 1; }
+            grep -q '^DATABASE_URL=' deploy_package/.env.cPanel       || { echo "DATABASE_URL missing"; exit 1; }
+            grep -q '^DB_USER=' deploy_package/.env.cPanel            || { echo "DB_USER missing"; exit 1; }
+            grep -q '^DATABASE_PASSWORD=' deploy_package/.env.cPanel  || { echo "DATABASE_PASSWORD missing"; exit 1; }
+            grep -q '^POSTGRES_USER=' deploy_package/.env.cPanel       || { echo "POSTGRES_USER missing"; exit 1; }
           grep -q '^POSTGRES_PASSWORD=' deploy_package/.env.cPanel  || { echo "POSTGRES_PASSWORD missing"; exit 1; }
+            grep -q '^CPANEL_DB_USER=' deploy_package/.env.cPanel      || { echo "CPANEL_DB_USER missing"; exit 1; }
           grep -q '^CPANEL_DB_PASSWORD=' deploy_package/.env.cPanel || { echo "CPANEL_DB_PASSWORD missing"; exit 1; }
-          echo ".env.cPanel verified — password keys present"
+            echo ".env.cPanel verified — db url, username, and password keys present"
 
-          # Verify password is not empty in the file
+            # Verify DB credentials are not empty in the file
           python3 - << 'PY'
           import re, sys
           content = open('deploy_package/.env.cPanel').read()
-          m = re.search(r"^POSTGRES_PASSWORD='(.*)'", content, re.MULTILINE)
-          if not m or not m.group(1).strip():
-              print("ERROR: POSTGRES_PASSWORD is empty in .env.cPanel")
+          checks = {
+            'DATABASE_URL': r"^DATABASE_URL='(.*)'$",
+            'DB_USER': r"^DB_USER='(.*)'$",
+            'DATABASE_PASSWORD': r"^DATABASE_PASSWORD='(.*)'$",
+            'POSTGRES_USER': r"^POSTGRES_USER='(.*)'$",
+            'POSTGRES_PASSWORD': r"^POSTGRES_PASSWORD='(.*)'$",
+            'CPANEL_DB_USER': r"^CPANEL_DB_USER='(.*)'$",
+            'CPANEL_DB_PASSWORD': r"^CPANEL_DB_PASSWORD='(.*)'$",
+          }
+          values = {}
+          for key, pattern in checks.items():
+            m = re.search(pattern, content, re.MULTILINE)
+            if not m or not m.group(1).strip():
+              print(f"ERROR: {key} is missing or empty in .env.cPanel")
               sys.exit(1)
-          print(f"POSTGRES_PASSWORD length in file: {len(m.group(1))}")
+            values[key] = m.group(1)
+
+          if '@' not in values['DATABASE_URL'] or ':' not in values['DATABASE_URL']:
+            print("ERROR: DATABASE_URL appears malformed")
+            sys.exit(1)
+
+          print(f"POSTGRES_USER length in file: {len(values['POSTGRES_USER'])}")
+          print(f"POSTGRES_PASSWORD length in file: {len(values['POSTGRES_PASSWORD'])}")
           PY
 
       - name: Deploy via SFTP
@@ -242,10 +268,10 @@ jobs:
           # Verify password loaded correctly before attempting migration
           python3 - << 'PY'
           import os, sys
-          pwd = os.getenv('POSTGRES_PASSWORD') or os.getenv('CPANEL_DB_PASSWORD') or ''
+          pwd = os.getenv('POSTGRES_PASSWORD') or os.getenv('CPANEL_DB_PASSWORD') or os.getenv('DATABASE_PASSWORD') or ''
           print(f"DB_ENGINE      = {os.getenv('DB_ENGINE')}")
           print(f"POSTGRES_HOST  = {os.getenv('POSTGRES_HOST')}")
-          print(f"POSTGRES_USER  = {os.getenv('POSTGRES_USER')}")
+          print(f"POSTGRES_USER  = {os.getenv('POSTGRES_USER') or os.getenv('DB_USER')}")
           print(f"HAS_PASSWORD   = {bool(pwd)}")
           print(f"PASSWORD_LEN   = {len(pwd)}")
           if not pwd:
@@ -263,7 +289,9 @@ jobs:
           db = connections['default'].settings_dict
           print(f"Django DB NAME     : {db.get('NAME')}")
           print(f"Django DB USER     : {db.get('USER')}")
-          print(f"Django DB PASSWORD : {repr(db.get('PASSWORD'))}")
+          pwd = db.get('PASSWORD') or ''
+          print(f"Django DB HAS PASS : {bool(pwd)}")
+          print(f"Django DB PASS LEN : {len(pwd)}")
           print(f"Django DB HOST     : {db.get('HOST')}")
           PY
 
