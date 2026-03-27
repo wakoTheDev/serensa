@@ -70,7 +70,7 @@ jobs:
         with:
           node-version: 20
 
-      - run: npm install --global vercel@latest
+      - run: npm install --global vercel@32.0.0 --no-audit --no-fund
 
       - run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
