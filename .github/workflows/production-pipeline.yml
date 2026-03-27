@@ -117,7 +117,14 @@ jobs:
           DJANGO_DEBUG=0
           DJANGO_ALLOWED_HOSTS=${{ secrets.CPANEL_ALLOWED_HOSTS }}
           DJANGO_CSRF_TRUSTED_ORIGINS=${{ secrets.CPANEL_CSRF_TRUSTED_ORIGINS }}
-          DATABASE_URL=postgresql://${{ secrets.CPANEL_DB_USER }}:${{ secrets.CPANEL_DB_PASSWORD }}@localhost:5432/${{ secrets.CPANEL_DB_NAME }}
+          POSTGRES_DB=${{ secrets.CPANEL_DB_NAME }}
+          POSTGRES_USER=${{ secrets.CPANEL_DB_USER }}
+          POSTGRES_PASSWORD=${{ secrets.CPANEL_DB_PASSWORD }}
+          POSTGRES_HOST=localhost
+          POSTGRES_PORT=5432
+          CPANEL_DB_NAME=${{ secrets.CPANEL_DB_NAME }}
+          CPANEL_DB_USER=${{ secrets.CPANEL_DB_USER }}
+          CPANEL_DB_PASSWORD=${{ secrets.CPANEL_DB_PASSWORD }}
           EOF
 
       - name: Deploy via SFTP
@@ -143,9 +150,12 @@ jobs:
           CPANEL_PORT="${{ secrets.CPANEL_PORT || 1624 }}"
           sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p "$CPANEL_PORT" \
           -o StrictHostKeyChecking=no \
-          ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} bash << 'ENDSSH'
-          source /home/qtmwmxfn/virtualenv/serensa_app/3.11/bin/activate
-          cd /home/qtmwmxfn/serensa_app
+          ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} bash << ENDSSH
+          source /home/${{ secrets.CPANEL_USER }}/virtualenv/serensa_app/3.11/bin/activate
+          cd /home/${{ secrets.CPANEL_USER }}/serensa_app
+          set -a
+          source .env.cPanel
+          set +a
           python manage.py migrate --noinput --settings=serensa.settings
           ENDSSH
 
