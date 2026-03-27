@@ -106,6 +106,7 @@ jobs:
 
       - name: Prepare Deployment Package
         env:
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
           CPANEL_DJANGO_SECRET_KEY: ${{ secrets.CPANEL_DJANGO_SECRET_KEY }}
           CPANEL_ALLOWED_HOSTS: ${{ secrets.CPANEL_ALLOWED_HOSTS }}
           CPANEL_CSRF_TRUSTED_ORIGINS: ${{ secrets.CPANEL_CSRF_TRUSTED_ORIGINS }}
@@ -125,7 +126,7 @@ jobs:
             printf 'DJANGO_ALLOWED_HOSTS=%q\n' "$CPANEL_ALLOWED_HOSTS"
             printf 'DJANGO_CSRF_TRUSTED_ORIGINS=%q\n' "$CPANEL_CSRF_TRUSTED_ORIGINS"
             printf 'POSTGRES_DB=%q\n' "$CPANEL_DB_NAME"
-            printf 'POSTGRES_USER=%q\n' "$CPANEL_DB_USER"
+            printf 'POSTGRES_USER=%q\n' "$CPANEL_USER"
             printf 'POSTGRES_PASSWORD=%q\n' "$CPANEL_DB_PASSWORD"
             printf 'POSTGRES_HOST=%q\n' 'localhost'
             printf 'POSTGRES_PORT=%q\n' '5432'
