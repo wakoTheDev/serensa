@@ -16,24 +16,7 @@ env:
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
-  determine-mode:
-    runs-on: ubuntu-latest
-    outputs:
-      mode: ${{ steps.set-mode.outputs.mode }}
-      deploy_vercel: ${{ steps.set-mode.outputs.deploy_vercel }}
-      deploy_cpanel: ${{ steps.set-mode.outputs.deploy_cpanel }}
-    steps:
-      - name: Determine Deployment Mode
-        id: set-mode
-        run: |
-          MODE="full-chain"
-          echo "mode=$MODE" >> $GITHUB_OUTPUT
-          echo "deploy_vercel=true" >> $GITHUB_OUTPUT
-          echo "deploy_cpanel=true" >> $GITHUB_OUTPUT
-
   deploy-vercel:
-    needs: determine-mode
-    if: needs.determine-mode.outputs.deploy_vercel == 'true'
     runs-on: ubuntu-latest
     outputs:
       vercel_url: ${{ steps.deploy.outputs.preview_url || steps.deploy.outputs.url }}
@@ -71,8 +54,7 @@ jobs:
       - run: echo "Deployed to Vercel: ${{ steps.deploy.outputs.url }}"
 
   verify-vercel:
-    needs: [determine-mode, deploy-vercel]
-    if: needs.determine-mode.outputs.deploy_vercel == 'true'
+    needs: [deploy-vercel]
     runs-on: ubuntu-latest
     steps:
       - name: Wait 2 Minutes
@@ -101,8 +83,8 @@ jobs:
           exit 1
 
   deploy-cpanel:
-    needs: [determine-mode, deploy-vercel, verify-vercel]
-    if: always() && needs.determine-mode.outputs.deploy_cpanel == 'true' && needs.verify-vercel.result == 'success'
+    needs: [deploy-vercel, verify-vercel]
+    if: needs.verify-vercel.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -206,12 +188,12 @@ jobs:
           exit 1
 
   deployment-summary:
-    needs: [determine-mode, deploy-vercel, verify-vercel, deploy-cpanel]
+    needs: [deploy-vercel, verify-vercel, deploy-cpanel]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Deployment Summary
         run: |
-          echo "Mode: ${{ needs.determine-mode.outputs.mode }}"
+          echo "Mode: full-chain"
           echo "Vercel Deploy: ${{ needs.deploy-vercel.result:-skipped }}"
           echo "cPanel Deploy: ${{ needs.deploy-cpanel.result:-skipped }}"
