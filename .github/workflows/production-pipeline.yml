@@ -80,15 +80,22 @@ jobs:
 
       - name: Health Check Vercel
         run: |
-          VERCEL_URL="https://serensa.vercel.app"
-          for attempt in {1..5}; do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$VERCEL_URL/healthcheck/")
+          VERCEL_URL="${{ needs.deploy-vercel.outputs.vercel_url }}"
+          if [[ -z "$VERCEL_URL" ]]; then
+            VERCEL_URL="https://serensa.vercel.app"
+          fi
+
+          HEALTHCHECK_URL="${VERCEL_URL%/}/healthcheck/"
+          echo "Using Vercel healthcheck URL: $HEALTHCHECK_URL"
+
+          for attempt in {1..12}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTHCHECK_URL")
             if [[ "$HTTP_CODE" == "200" ]]; then
               echo "Vercel healthy"
               exit 0
             fi
             echo "Attempt $attempt - HTTP $HTTP_CODE, retrying..."
-            sleep 10
+            sleep 15
           done
           echo "Vercel health check failed"
           exit 1
@@ -103,7 +110,6 @@ jobs:
       - name: Validate cPanel Secrets
         run: |
           [[ -n "${{ secrets.CPANEL_HOST }}" ]] || exit 1
-          [[ -n "${{ secrets.CPANEL_PORT }}" ]] || exit 1
           [[ -n "${{ secrets.CPANEL_USER }}" ]] || exit 1
           [[ -n "${{ secrets.CPANEL_SFTP_PASSWORD }}" ]] || exit 1
           [[ -n "${{ secrets.CPANEL_DB_NAME }}" ]] || exit 1
@@ -152,7 +158,8 @@ jobs:
 
       - name: Run Migrations on cPanel
         run: |
-          sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p ${{ secrets.CPANEL_PORT }} ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} "
+          CPANEL_PORT="${{ secrets.CPANEL_PORT || 1624 }}"
+          sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p "$CPANEL_PORT" ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} "
             cd /home/${{ secrets.CPANEL_USER }}/serensa_app
             if [ -f virtualenv/serensa_app/3.12/bin/activate ]; then . virtualenv/serensa_app/3.12/bin/activate; fi
             python manage.py showmigrations --settings=serensa.settings
@@ -166,7 +173,8 @@ jobs:
             CPANEL_PUBLIC_ROOT="/home/${{ secrets.CPANEL_USER }}/public_html"
           fi
 
-          sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p ${{ secrets.CPANEL_PORT }} ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} "
+          CPANEL_PORT="${{ secrets.CPANEL_PORT || 1624 }}"
+          sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p "$CPANEL_PORT" ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} "
             set -e
             cp /home/${{ secrets.CPANEL_USER }}/serensa_app/.htaccess ${CPANEL_PUBLIC_ROOT}/.htaccess
             echo 'Installed .htaccess at:' ${CPANEL_PUBLIC_ROOT}/.htaccess
@@ -175,7 +183,8 @@ jobs:
 
       - name: Restart Passenger App
         run: |
-          sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p ${{ secrets.CPANEL_PORT }} ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} "
+          CPANEL_PORT="${{ secrets.CPANEL_PORT || 1624 }}"
+          sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p "$CPANEL_PORT" ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} "
             mkdir -p /home/${{ secrets.CPANEL_USER }}/serensa_app/tmp
             touch /home/${{ secrets.CPANEL_USER }}/serensa_app/tmp/restart.txt
           "
