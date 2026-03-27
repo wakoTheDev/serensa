@@ -347,17 +347,27 @@ jobs:
           if [[ ! -s "$APP_DIR/.htaccess" ]]; then
             echo ".htaccess missing or empty; recreating fallback .htaccess in serensa_app"
             {
+                printf '%s\n' '# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN'
               printf '%s\n' "PassengerAppRoot /home/${CPANEL_USER}/serensa_app"
               printf '%s\n' 'PassengerBaseURI /'
               printf '%s\n' 'PassengerAppType wsgi'
               printf '%s\n' 'PassengerStartupFile passenger_wsgi.py'
               printf '%s\n' "PassengerPython /home/${CPANEL_USER}/virtualenv/serensa_app/3.11/bin/python"
               printf '%s\n' 'PassengerEnabled on'
+                printf '%s\n' '# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END'
               printf '%s\n' ''
               printf '%s\n' '<IfModule mod_rewrite.c>'
               printf '%s\n' '    RewriteEngine On'
               printf '%s\n' '    Options -MultiViews'
               printf '%s\n' '    RewriteRule ^\\.well-known/ - [L]'
+                printf '%s\n' '    RewriteCond %{REQUEST_URI} ^/static/'
+                printf '%s\n' '    RewriteRule ^ - [L]'
+                printf '%s\n' '    RewriteCond %{REQUEST_URI} ^/media/'
+                printf '%s\n' '    RewriteRule ^ - [L]'
+                printf '%s\n' '    RewriteCond %{REQUEST_FILENAME} -f [OR]'
+                printf '%s\n' '    RewriteCond %{REQUEST_FILENAME} -d'
+                printf '%s\n' '    RewriteRule ^ - [L]'
+                printf '%s\n' '    RewriteRule ^ - [L]'
               printf '%s\n' '</IfModule>'
             } > "$APP_DIR/.htaccess"
             chmod 644 "$APP_DIR/.htaccess"
