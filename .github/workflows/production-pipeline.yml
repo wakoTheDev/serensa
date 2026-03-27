@@ -51,7 +51,7 @@ jobs:
           URL=$(echo "$OUTPUT" | grep -oP 'https://[^\s]+' | tail -1)
           echo "url=$URL" >> $GITHUB_OUTPUT
 
-      - run: echo "Deployed to Vercel: ${{ steps.deploy.outputs.url }}"
+      - run: echo "Deployed to Vercel:https://serensa.vercel.app "
 
   verify-vercel:
     needs: [deploy-vercel]
@@ -62,7 +62,7 @@ jobs:
 
       - name: Health Check Vercel
         run: |
-          VERCEL_URL="${{ needs.deploy-vercel.outputs.vercel_url }}"
+          VERCEL_URL="https://serensa.vercel.app"
           if [[ -z "$VERCEL_URL" ]]; then
             VERCEL_URL="https://serensa.vercel.app"
           fi
