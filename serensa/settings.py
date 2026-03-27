@@ -72,8 +72,12 @@ elif DB_ENGINE == "django.db.backends.postgresql" or IS_POSTGRES_URL:
             "default": {
                 "ENGINE": "django.db.backends.postgresql",
                 "NAME": parsed.path.lstrip("/"),
-                "USER": unquote(parsed.username or ""),
-                "PASSWORD": unquote(parsed.password or ""),
+                "USER": unquote(parsed.username or "") or os.getenv(
+                    "POSTGRES_USER", os.getenv("CPANEL_DB_USER", os.getenv("CPANEL_USER", ""))
+                ),
+                "PASSWORD": unquote(parsed.password or "") or os.getenv(
+                    "POSTGRES_PASSWORD", os.getenv("CPANEL_DB_PASSWORD", "")
+                ),
                 "HOST": parsed.hostname or os.getenv("POSTGRES_HOST", "localhost"),
                 "PORT": str(parsed.port or os.getenv("POSTGRES_PORT", "5432")),
             }
