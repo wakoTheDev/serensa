@@ -105,27 +105,34 @@ jobs:
       - run: python -m pip install -r requirements.txt
 
       - name: Prepare Deployment Package
+        env:
+          CPANEL_DJANGO_SECRET_KEY: ${{ secrets.CPANEL_DJANGO_SECRET_KEY }}
+          CPANEL_ALLOWED_HOSTS: ${{ secrets.CPANEL_ALLOWED_HOSTS }}
+          CPANEL_CSRF_TRUSTED_ORIGINS: ${{ secrets.CPANEL_CSRF_TRUSTED_ORIGINS }}
+          CPANEL_DB_NAME: ${{ secrets.CPANEL_DB_NAME }}
+          CPANEL_DB_USER: ${{ secrets.CPANEL_DB_USER }}
+          CPANEL_DB_PASSWORD: ${{ secrets.CPANEL_DB_PASSWORD }}
         run: |
           mkdir -p deploy_package
           cp -r sensa serensa templates static scripts deploy_package/
           cp manage.py requirements.txt passenger_wsgi.py deploy_package/
           cp .htaccess.cpanel.template deploy_package/.htaccess
           sed -i "s|__CPANEL_USER__|${{ secrets.CPANEL_USER }}|g" deploy_package/.htaccess
-          cat > deploy_package/.env.cPanel << EOF
-          DB_ENGINE=django.db.backends.postgresql
-          DJANGO_SECRET_KEY=${{ secrets.CPANEL_DJANGO_SECRET_KEY }}
-          DJANGO_DEBUG=0
-          DJANGO_ALLOWED_HOSTS=${{ secrets.CPANEL_ALLOWED_HOSTS }}
-          DJANGO_CSRF_TRUSTED_ORIGINS=${{ secrets.CPANEL_CSRF_TRUSTED_ORIGINS }}
-          POSTGRES_DB=${{ secrets.CPANEL_DB_NAME }}
-          POSTGRES_USER=${{ secrets.CPANEL_DB_USER }}
-          POSTGRES_PASSWORD=${{ secrets.CPANEL_DB_PASSWORD }}
-          POSTGRES_HOST=localhost
-          POSTGRES_PORT=5432
-          CPANEL_DB_NAME=${{ secrets.CPANEL_DB_NAME }}
-          CPANEL_DB_USER=${{ secrets.CPANEL_DB_USER }}
-          CPANEL_DB_PASSWORD=${{ secrets.CPANEL_DB_PASSWORD }}
-          EOF
+          {
+            printf 'DB_ENGINE=%q\n' 'django.db.backends.postgresql'
+            printf 'DJANGO_SECRET_KEY=%q\n' "$CPANEL_DJANGO_SECRET_KEY"
+            printf 'DJANGO_DEBUG=%q\n' '0'
+            printf 'DJANGO_ALLOWED_HOSTS=%q\n' "$CPANEL_ALLOWED_HOSTS"
+            printf 'DJANGO_CSRF_TRUSTED_ORIGINS=%q\n' "$CPANEL_CSRF_TRUSTED_ORIGINS"
+            printf 'POSTGRES_DB=%q\n' "$CPANEL_DB_NAME"
+            printf 'POSTGRES_USER=%q\n' "$CPANEL_DB_USER"
+            printf 'POSTGRES_PASSWORD=%q\n' "$CPANEL_DB_PASSWORD"
+            printf 'POSTGRES_HOST=%q\n' 'localhost'
+            printf 'POSTGRES_PORT=%q\n' '5432'
+            printf 'CPANEL_DB_NAME=%q\n' "$CPANEL_DB_NAME"
+            printf 'CPANEL_DB_USER=%q\n' "$CPANEL_DB_USER"
+            printf 'CPANEL_DB_PASSWORD=%q\n' "$CPANEL_DB_PASSWORD"
+          } > deploy_package/.env.cPanel
 
       - name: Deploy via SFTP
         run: |
@@ -151,11 +158,24 @@ jobs:
           sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p "$CPANEL_PORT" \
           -o StrictHostKeyChecking=no \
           ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} bash << ENDSSH
+          set -e
           source /home/${{ secrets.CPANEL_USER }}/virtualenv/serensa_app/3.11/bin/activate
           cd /home/${{ secrets.CPANEL_USER }}/serensa_app
           set -a
           source .env.cPanel
           set +a
+          if [[ -z "${POSTGRES_PASSWORD:-}" && -z "${CPANEL_DB_PASSWORD:-}" ]]; then
+            echo "Database password env var not loaded from .env.cPanel"
+            exit 1
+          fi
+          python - << 'PY'
+import os
+print('DB_ENGINE=', os.getenv('DB_ENGINE'))
+print('DB_HOST=', os.getenv('POSTGRES_HOST'))
+pwd = os.getenv('POSTGRES_PASSWORD') or os.getenv('CPANEL_DB_PASSWORD') or ''
+print('HAS_DB_PASSWORD=', bool(pwd))
+print('DB_PASSWORD_LENGTH=', len(pwd))
+PY
           python manage.py migrate --noinput --settings=serensa.settings
           ENDSSH
 
