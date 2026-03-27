@@ -318,7 +318,47 @@ jobs:
           print(f"Django DB HOST     : {db.get('HOST')}")
           PY
 
-          python manage.py migrate --fake-initial --noinput --settings=serensa.settings
+            # Progressive migration strategy for legacy/manual schemas on cPanel.
+            python manage.py migrate contenttypes 0001_initial --fake-initial --noinput --settings=serensa.settings
+            python3 - << 'PY'
+            import os
+            import subprocess
+            import psycopg2
+
+            conn = psycopg2.connect(
+              dbname=os.getenv('POSTGRES_DB') or os.getenv('CPANEL_DB_NAME'),
+              user=os.getenv('POSTGRES_USER') or os.getenv('DB_USER') or os.getenv('CPANEL_DB_USER') or os.getenv('CPANEL_USER'),
+              password=os.getenv('POSTGRES_PASSWORD') or os.getenv('DATABASE_PASSWORD') or os.getenv('CPANEL_DB_PASSWORD'),
+              host=os.getenv('POSTGRES_HOST', 'localhost'),
+              port=os.getenv('POSTGRES_PORT', '5432'),
+            )
+            try:
+              with conn.cursor() as cur:
+                cur.execute("""
+                  SELECT 1
+                  FROM information_schema.columns
+                  WHERE table_name = 'django_content_type' AND column_name = 'name'
+                  LIMIT 1
+                """)
+                has_name_col = cur.fetchone() is not None
+            finally:
+              conn.close()
+
+            if not has_name_col:
+              print("Column django_content_type.name already absent; faking contenttypes.0002_remove_content_type_name")
+              subprocess.check_call([
+                'python', 'manage.py', 'migrate', 'contenttypes',
+                '0002_remove_content_type_name', '--fake', '--noinput', '--settings=serensa.settings'
+              ])
+            else:
+              print("Column django_content_type.name exists; applying contenttypes migration normally")
+              subprocess.check_call([
+                'python', 'manage.py', 'migrate', 'contenttypes',
+                '0002_remove_content_type_name', '--noinput', '--settings=serensa.settings'
+              ])
+            PY
+
+            python manage.py migrate --fake-initial --noinput --settings=serensa.settings
           python manage.py collectstatic --noinput --settings=serensa.settings
           echo "Migrations and collectstatic completed"
           ENDSSH
