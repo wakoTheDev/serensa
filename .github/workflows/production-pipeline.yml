@@ -465,25 +465,25 @@ jobs:
                               existing_tables = set(conn.introspection.table_names(cursor))
                           missing_tables = [t for t in required_tables if t not in existing_tables]
                           if missing_tables:
-                        print(f'{label} has partial initial schema; creating missing tables before faking')
-                        print('Missing tables: ' + ', '.join(missing_tables))
-                        app_models = list(django_apps.get_app_config(migration.app_label).get_models())
-                        with conn.schema_editor() as schema_editor:
-                          for table in missing_tables:
-                            model = next((m for m in app_models if m._meta.db_table == table), None)
-                            if model is None:
-                              print(f'Cannot map missing table {table} to a Django model in app {migration.app_label}')
-                              print(result.stdout)
-                              print(result.stderr)
-                              sys.exit(result.returncode)
-                            print(f'Creating missing table {table}')
-                            try:
-                              schema_editor.create_model(model)
-                            except Exception as exc:
-                              if 'already exists' in str(exc).lower():
-                                print(f'Table {table} already exists during create attempt; continuing')
-                              else:
-                                raise
+                              print(f'{label} has partial initial schema; creating missing tables before faking')
+                              print('Missing tables: ' + ', '.join(missing_tables))
+                              app_models = list(django_apps.get_app_config(migration.app_label).get_models())
+                              with conn.schema_editor() as schema_editor:
+                                  for table in missing_tables:
+                                      model = next((m for m in app_models if m._meta.db_table == table), None)
+                                      if model is None:
+                                          print(f'Cannot map missing table {table} to a Django model in app {migration.app_label}')
+                                          print(result.stdout)
+                                          print(result.stderr)
+                                          sys.exit(result.returncode)
+                                      print(f'Creating missing table {table}')
+                                      try:
+                                          schema_editor.create_model(model)
+                                      except Exception as exc:
+                                          if 'already exists' in str(exc).lower():
+                                              print(f'Table {table} already exists during create attempt; continuing')
+                                          else:
+                                              raise
                   print(f'{label} hit existing-object conflict; faking and continuing')
                   fake_result = subprocess.run(cmd + ['--fake'], text=True, capture_output=True)
                   if fake_result.returncode != 0:
