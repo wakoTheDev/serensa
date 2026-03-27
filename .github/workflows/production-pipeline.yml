@@ -319,22 +319,20 @@ jobs:
           echo "Migrations and collectstatic completed"
           ENDSSH
 
-      - name: Install .htaccess in cPanel Web Root
+      - name: Verify .htaccess in serensa_app
         run: |
           CPANEL_PORT="${{ secrets.CPANEL_PORT }}"
           CPANEL_PORT="${CPANEL_PORT:-22}"
-
-          # Use CPANEL_PUBLIC_ROOT secret if set, otherwise default to public_html
-          CPANEL_PUBLIC_ROOT="${{ secrets.CPANEL_PUBLIC_ROOT }}"
-          CPANEL_PUBLIC_ROOT="${CPANEL_PUBLIC_ROOT:-/home/${{ secrets.CPANEL_USER }}/public_html}"
 
           sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" \
             ssh -p "$CPANEL_PORT" \
             -o StrictHostKeyChecking=no \
             ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} \
-            "cp /home/${{ secrets.CPANEL_USER }}/serensa_app/.htaccess ${CPANEL_PUBLIC_ROOT}/.htaccess \
-             && echo 'Installed .htaccess at: ${CPANEL_PUBLIC_ROOT}/.htaccess' \
-             && head -n 10 ${CPANEL_PUBLIC_ROOT}/.htaccess"
+            "set -e \
+             && APP_DIR=/home/${{ secrets.CPANEL_USER }}/serensa_app \
+             && test -s \"$APP_DIR/.htaccess\" \
+             && echo 'Using .htaccess at:' \"$APP_DIR/.htaccess\" \
+             && head -n 12 \"$APP_DIR/.htaccess\""
 
       - name: Restart Passenger App
         run: |

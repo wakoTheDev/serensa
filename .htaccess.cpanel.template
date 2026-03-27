@@ -2,7 +2,7 @@ PassengerAppRoot /home/__CPANEL_USER__/serensa_app
 PassengerBaseURI /
 PassengerAppType wsgi
 PassengerStartupFile passenger_wsgi.py
-PassengerPython /home/__CPANEL_USER__/virtualenv/serensa_app/3.12/bin/python
+PassengerPython /home/__CPANEL_USER__/virtualenv/serensa_app/3.11/bin/python
 PassengerEnabled on
 
 <IfModule mod_rewrite.c>
@@ -15,5 +15,6 @@ PassengerEnabled on
     # Let Apache serve existing files/directories directly.
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^ / [L]
+    # Route everything else into Passenger while preserving original path.
+    RewriteRule ^(.*)$ passenger_wsgi.py/$1 [QSA,PT,L]
 </IfModule>
