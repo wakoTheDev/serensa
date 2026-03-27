@@ -318,7 +318,7 @@ jobs:
           print(f"Django DB HOST     : {db.get('HOST')}")
           PY
 
-          python manage.py migrate --noinput --settings=serensa.settings
+          python manage.py migrate --fake-initial --noinput --settings=serensa.settings
           python manage.py collectstatic --noinput --settings=serensa.settings
           echo "Migrations and collectstatic completed"
           ENDSSH
