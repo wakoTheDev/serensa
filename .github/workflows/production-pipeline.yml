@@ -141,12 +141,13 @@ jobs:
       - name: Run Migrations on cPanel
         run: |
           CPANEL_PORT="${{ secrets.CPANEL_PORT || 1624 }}"
-          sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p "$CPANEL_PORT" ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} "
-            cd /home/${{ secrets.CPANEL_USER }}/serensa_app
-            if [ -f virtualenv/serensa_app/3.12/bin/activate ]; then . virtualenv/serensa_app/3.12/bin/activate; fi
-            python3 manage.py showmigrations --settings=serensa.settings
-            python3 manage.py migrate --noinput --settings=serensa.settings
-          "
+          sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p "$CPANEL_PORT" \
+          -o StrictHostKeyChecking=no \
+          ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} bash << 'ENDSSH'
+          source /home/qtmwmxfn/virtualenv/serensa_app/3.12/bin/activate
+          cd /home/qtmwmxfn/serensa_app
+          python manage.py migrate --noinput --settings=serensa.settings
+          ENDSSH
 
       - name: Install .htaccess in cPanel web root
         run: |
