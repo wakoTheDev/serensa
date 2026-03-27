@@ -436,6 +436,11 @@ jobs:
               'DuplicateObject',
           ]
 
+          missing_relation_markers = [
+              'does not exist',
+              'UndefinedTable',
+          ]
+
           def expected_tables_for_migration(migration):
               tables = []
               for op in migration.operations:
@@ -444,12 +449,52 @@ jobs:
                       tables.append(db_table)
               return tables
 
+          def ensure_missing_initial_tables(migration, reason):
+              required_tables = expected_tables_for_migration(migration)
+              if not required_tables:
+                  return
+
+              with conn.cursor() as cursor:
+                  existing_tables = set(conn.introspection.table_names(cursor))
+              missing_tables = [t for t in required_tables if t not in existing_tables]
+              if not missing_tables:
+                  return
+
+              print(f'{migration.app_label}.{migration.name}: {reason}; creating missing initial tables')
+              print('Missing tables: ' + ', '.join(missing_tables))
+
+              app_models = list(django_apps.get_app_config(migration.app_label).get_models())
+              with conn.schema_editor() as schema_editor:
+                  for table in missing_tables:
+                      model = next((m for m in app_models if m._meta.db_table == table), None)
+                      if model is None:
+                          raise RuntimeError(
+                              f'Cannot map missing table {table} to a Django model in app {migration.app_label}'
+                          )
+                      print(f'Creating missing table {table}')
+                      try:
+                          schema_editor.create_model(model)
+                      except Exception as exc:
+                          if 'already exists' in str(exc).lower():
+                              print(f'Table {table} already exists during create attempt; continuing')
+                          else:
+                              raise
+
           for migration in forward:
               label = f"{migration.app_label}.{migration.name}"
               cmd = [
                   'python', 'manage.py', 'migrate', migration.app_label, migration.name,
                   '--noinput', '--settings=serensa.settings'
               ]
+
+              if migration.initial:
+                  try:
+                      ensure_missing_initial_tables(migration, 'pre-migration check')
+                  except Exception as exc:
+                      print(str(exc))
+                      sys.exit(1)
+                  cmd.append('--fake-initial')
+
               print(f'Applying {label}')
               result = subprocess.run(cmd, text=True, capture_output=True)
 
@@ -457,33 +502,31 @@ jobs:
                   continue
 
               output = (result.stdout or '') + '\n' + (result.stderr or '')
+              if migration.initial and any(marker in output for marker in missing_relation_markers):
+                  print(f'{label} failed due to missing relation; retrying after creating missing initial tables')
+                  try:
+                      ensure_missing_initial_tables(migration, 'missing-relation recovery')
+                  except Exception as exc:
+                      print(str(exc))
+                      print(result.stdout)
+                      print(result.stderr)
+                      sys.exit(result.returncode)
+
+                  retry = subprocess.run(cmd, text=True, capture_output=True)
+                  if retry.returncode == 0:
+                      continue
+                  output = (retry.stdout or '') + '\n' + (retry.stderr or '')
+                  result = retry
+
               if any(marker in output for marker in duplicate_markers):
                   if migration.initial:
-                      required_tables = expected_tables_for_migration(migration)
-                      if required_tables:
-                          with conn.cursor() as cursor:
-                              existing_tables = set(conn.introspection.table_names(cursor))
-                          missing_tables = [t for t in required_tables if t not in existing_tables]
-                          if missing_tables:
-                              print(f'{label} has partial initial schema; creating missing tables before faking')
-                              print('Missing tables: ' + ', '.join(missing_tables))
-                              app_models = list(django_apps.get_app_config(migration.app_label).get_models())
-                              with conn.schema_editor() as schema_editor:
-                                  for table in missing_tables:
-                                      model = next((m for m in app_models if m._meta.db_table == table), None)
-                                      if model is None:
-                                          print(f'Cannot map missing table {table} to a Django model in app {migration.app_label}')
-                                          print(result.stdout)
-                                          print(result.stderr)
-                                          sys.exit(result.returncode)
-                                      print(f'Creating missing table {table}')
-                                      try:
-                                          schema_editor.create_model(model)
-                                      except Exception as exc:
-                                          if 'already exists' in str(exc).lower():
-                                              print(f'Table {table} already exists during create attempt; continuing')
-                                          else:
-                                              raise
+                      try:
+                          ensure_missing_initial_tables(migration, 'duplicate-conflict recovery')
+                      except Exception as exc:
+                          print(str(exc))
+                          print(result.stdout)
+                          print(result.stderr)
+                          sys.exit(result.returncode)
                   print(f'{label} hit existing-object conflict; faking and continuing')
                   fake_result = subprocess.run(cmd + ['--fake'], text=True, capture_output=True)
                   if fake_result.returncode != 0:
