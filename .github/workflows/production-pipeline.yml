@@ -170,13 +170,13 @@ jobs:
             exit 1
           fi
           python - << 'PY'
-import os
-print('DB_ENGINE=', os.getenv('DB_ENGINE'))
-print('DB_HOST=', os.getenv('POSTGRES_HOST'))
-pwd = os.getenv('POSTGRES_PASSWORD') or os.getenv('CPANEL_DB_PASSWORD') or ''
-print('HAS_DB_PASSWORD=', bool(pwd))
-print('DB_PASSWORD_LENGTH=', len(pwd))
-PY
+          import os
+          print('DB_ENGINE=', os.getenv('DB_ENGINE'))
+          print('DB_HOST=', os.getenv('POSTGRES_HOST'))
+          pwd = os.getenv('POSTGRES_PASSWORD') or os.getenv('CPANEL_DB_PASSWORD') or ''
+          print('HAS_DB_PASSWORD=', bool(pwd))
+          print('DB_PASSWORD_LENGTH=', len(pwd))
+          PY
           python manage.py migrate --noinput --settings=serensa.settings
           ENDSSH
 
