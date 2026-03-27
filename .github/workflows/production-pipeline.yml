@@ -194,7 +194,7 @@ jobs:
           CPANEL_PORT="${{ secrets.CPANEL_PORT || 1624 }}"
           sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p "$CPANEL_PORT" \
           -o StrictHostKeyChecking=no \
-          ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} bash << ENDSSH
+          ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} bash << 'ENDSSH'
           set -e
           source /home/${{ secrets.CPANEL_USER }}/virtualenv/serensa_app/3.11/bin/activate
           cd /home/${{ secrets.CPANEL_USER }}/serensa_app
