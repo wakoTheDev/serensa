@@ -327,10 +327,11 @@ jobs:
           echo "Migrations and collectstatic completed"
           ENDSSH
 
-      - name: Verify .htaccess in serensa_app
+      - name: Install and verify .htaccess in web root
         run: |
           CPANEL_PORT="${{ secrets.CPANEL_PORT }}"
           CPANEL_PORT="${CPANEL_PORT:-22}"
+          CPANEL_PUBLIC_ROOT="${{ secrets.CPANEL_PUBLIC_ROOT }}"
 
           sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" \
             ssh -p "$CPANEL_PORT" \
@@ -339,6 +340,9 @@ jobs:
           set -e
           CPANEL_USER=$(whoami)
           APP_DIR="/home/${CPANEL_USER}/serensa_app"
+          PUBLIC_ROOT="${CPANEL_PUBLIC_ROOT:-/home/${CPANEL_USER}/public_html}"
+
+          mkdir -p "$PUBLIC_ROOT"
 
           if [[ ! -s "$APP_DIR/.htaccess" ]]; then
             echo ".htaccess missing or empty; recreating fallback .htaccess in serensa_app"
@@ -363,8 +367,14 @@ jobs:
           fi
 
           test -s "$APP_DIR/.htaccess"
-          echo "Using .htaccess at: $APP_DIR/.htaccess"
-          head -n 12 "$APP_DIR/.htaccess"
+
+          # Domain is served from web root; install .htaccess there for live routing.
+          cp "$APP_DIR/.htaccess" "$PUBLIC_ROOT/.htaccess"
+          chmod 644 "$PUBLIC_ROOT/.htaccess"
+
+          test -s "$PUBLIC_ROOT/.htaccess"
+          echo "Using .htaccess at: $PUBLIC_ROOT/.htaccess"
+          head -n 12 "$PUBLIC_ROOT/.htaccess"
           ENDSSH
 
       - name: Restart Passenger App
