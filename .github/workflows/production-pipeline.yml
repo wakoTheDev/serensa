@@ -253,6 +253,20 @@ jobs:
               sys.exit(1)
           PY
 
+          # Confirm what Django actually sees (not just the shell env)
+          python3 - << 'PY'
+          import os
+          os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'serensa.settings')
+          import django
+          django.setup()
+          from django.db import connections
+          db = connections['default'].settings_dict
+          print(f"Django DB NAME     : {db.get('NAME')}")
+          print(f"Django DB USER     : {db.get('USER')}")
+          print(f"Django DB PASSWORD : {repr(db.get('PASSWORD'))}")
+          print(f"Django DB HOST     : {db.get('HOST')}")
+          PY
+
           python manage.py migrate --noinput --settings=serensa.settings
           python manage.py collectstatic --noinput --settings=serensa.settings
           echo "Migrations and collectstatic completed"
