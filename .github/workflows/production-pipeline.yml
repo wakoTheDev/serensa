@@ -401,7 +401,64 @@ jobs:
               conn.close()
           PY
 
-          python manage.py migrate --fake-initial --noinput --settings=serensa.settings
+          python3 - << 'PY'
+          import os
+          import subprocess
+          import sys
+
+          os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'serensa.settings')
+
+          import django
+          django.setup()
+
+          from django.db import DEFAULT_DB_ALIAS, connections
+          from django.db.migrations.executor import MigrationExecutor
+
+          conn = connections[DEFAULT_DB_ALIAS]
+          executor = MigrationExecutor(conn)
+          targets = executor.loader.graph.leaf_nodes()
+          plan = executor.migration_plan(targets)
+          forward = [migration for migration, backwards in plan if not backwards]
+
+          if not forward:
+              print('No pending migrations')
+              sys.exit(0)
+
+          duplicate_markers = [
+              'already exists',
+              'DuplicateTable',
+              'duplicate table',
+              'DuplicateColumn',
+              'duplicate column',
+          ]
+
+          for migration in forward:
+              label = f"{migration.app_label}.{migration.name}"
+              cmd = [
+                  'python', 'manage.py', 'migrate', migration.app_label, migration.name,
+                  '--noinput', '--settings=serensa.settings'
+              ]
+              print(f'Applying {label}')
+              result = subprocess.run(cmd, text=True, capture_output=True)
+
+              if result.returncode == 0:
+                  continue
+
+              output = (result.stdout or '') + '\n' + (result.stderr or '')
+              if any(marker in output for marker in duplicate_markers):
+                  print(f'{label} hit existing-object conflict; faking and continuing')
+                  fake_result = subprocess.run(cmd + ['--fake'], text=True, capture_output=True)
+                  if fake_result.returncode != 0:
+                      print(fake_result.stdout)
+                      print(fake_result.stderr)
+                      sys.exit(fake_result.returncode)
+                  continue
+
+              print(result.stdout)
+              print(result.stderr)
+              sys.exit(result.returncode)
+          PY
+
           python manage.py collectstatic --noinput --settings=serensa.settings
           echo "Migrations and collectstatic completed"
           ENDSSH
