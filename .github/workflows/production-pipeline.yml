@@ -144,8 +144,8 @@ jobs:
           sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p "$CPANEL_PORT" ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} "
             cd /home/${{ secrets.CPANEL_USER }}/serensa_app
             if [ -f virtualenv/serensa_app/3.12/bin/activate ]; then . virtualenv/serensa_app/3.12/bin/activate; fi
-            python manage.py showmigrations --settings=serensa.settings
-            python manage.py migrate --noinput --settings=serensa.settings
+            python3 manage.py showmigrations --settings=serensa.settings
+            python3 manage.py migrate --noinput --settings=serensa.settings
           "
 
       - name: Install .htaccess in cPanel web root
