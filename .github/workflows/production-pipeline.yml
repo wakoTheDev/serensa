@@ -235,9 +235,28 @@ jobs:
             set sftp:auto-confirm yes
             open sftp://${CPANEL_USER}:${CPANEL_PASS}@${CPANEL_HOST}:${CPANEL_PORT}
             cd ${DEPLOY_PATH}
-            mirror -e -R --delete --include-glob='.*' deploy_package/ .
+            mirror -e -R --delete deploy_package/ .
+            put deploy_package/.env.cPanel -o ${DEPLOY_PATH}/.env.cPanel
+            put deploy_package/.htaccess -o ${DEPLOY_PATH}/.htaccess
             bye
           "
+
+      - name: Verify .env.cPanel uploaded to cPanel
+        run: |
+          CPANEL_PORT="${{ secrets.CPANEL_PORT }}"
+          CPANEL_PORT="${CPANEL_PORT:-22}"
+          sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" \
+            ssh -p "$CPANEL_PORT" \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} << 'ENDSSH'
+          set -e
+          APP_DIR="/home/$(whoami)/serensa_app"
+          test -s "$APP_DIR/.env.cPanel" || { echo ".env.cPanel missing on cPanel"; exit 1; }
+          grep -q '^DATABASE_URL=' "$APP_DIR/.env.cPanel" || { echo "DATABASE_URL missing in remote .env.cPanel"; exit 1; }
+          grep -q '^DB_USER=' "$APP_DIR/.env.cPanel" || { echo "DB_USER missing in remote .env.cPanel"; exit 1; }
+          grep -q '^DATABASE_PASSWORD=' "$APP_DIR/.env.cPanel" || { echo "DATABASE_PASSWORD missing in remote .env.cPanel"; exit 1; }
+          echo "Remote .env.cPanel upload verified"
+          ENDSSH
 
       - name: Run Migrations on cPanel
         run: |
