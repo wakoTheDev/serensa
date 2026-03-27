@@ -158,7 +158,7 @@ jobs:
             printf 'DJANGO_ALLOWED_HOSTS=%q\n' "$CPANEL_ALLOWED_HOSTS"
             printf 'DJANGO_CSRF_TRUSTED_ORIGINS=%q\n' "$CPANEL_CSRF_TRUSTED_ORIGINS"
             printf 'POSTGRES_DB=%q\n' "$CPANEL_DB_NAME"
-            printf 'POSTGRES_USER=%q\n' "$CPANEL_USER"
+            printf 'POSTGRES_USER=%q\n' "$CPANEL_DB_USER"
             printf 'POSTGRES_PASSWORD=%q\n' "$CPANEL_DB_PASSWORD"
             printf 'POSTGRES_HOST=%q\n' 'localhost'
             printf 'POSTGRES_PORT=%q\n' '5432'
@@ -201,6 +201,8 @@ jobs:
           set -a
           source .env.cPanel
           set +a
+          # Avoid host-level DATABASE_URL overriding sourced POSTGRES_* values.
+          unset DATABASE_URL
           if [[ -z "${POSTGRES_PASSWORD:-}" && -z "${CPANEL_DB_PASSWORD:-}" ]]; then
             echo "Database password env var not loaded from .env.cPanel"
             exit 1
