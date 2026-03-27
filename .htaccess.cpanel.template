@@ -3,10 +3,17 @@ PassengerBaseURI /
 PassengerAppType wsgi
 PassengerStartupFile passenger_wsgi.py
 PassengerPython /home/__CPANEL_USER__/virtualenv/serensa_app/3.12/bin/python
+PassengerEnabled on
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    Options -MultiViews
+
+    # Keep ACME challenge paths reachable for certificate renewals.
+    RewriteRule ^\.well-known/ - [L]
+
+    # Let Apache serve existing files/directories directly.
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^(.*)$ /$1 [L]
+    RewriteRule ^ / [L]
 </IfModule>

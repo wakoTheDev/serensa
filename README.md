@@ -204,14 +204,14 @@ Optional for local mock mode:
 - Admin authentication supports phone number login.
 - Session timeout is configured to auto-logout admin/vendor users after 2 hours of inactivity.
 
-## CI/CD To Vercel (Auto Deploy On Main)
+## CI/CD Full-Chain Deployment (Vercel -> cPanel)
 
-This repository now includes GitHub Actions CI/CD for Vercel:
+This repository uses one production deployment workflow that always runs full-chain:
 
-- Workflow file: `.github/workflows/vercel-deploy.yml`
+- Workflow file: `.github/workflows/production-pipeline.yml`
 - Trigger: push to `main` branch (and manual `workflow_dispatch`)
-- Deployment target: Vercel Production
-- The workflow now pulls Vercel production environment variables, runs `python manage.py migrate --noinput`, then deploys.
+- Deployment order: Vercel deploy + verify, then cPanel deploy
+- cPanel deployment runs only after Vercel verification succeeds
 
 ### Required GitHub Repository Secrets
 

@@ -159,6 +159,20 @@ jobs:
             python manage.py migrate --noinput --settings=serensa.settings
           "
 
+      - name: Install .htaccess in cPanel web root
+        run: |
+          CPANEL_PUBLIC_ROOT="${{ secrets.CPANEL_PUBLIC_ROOT }}"
+          if [[ -z "$CPANEL_PUBLIC_ROOT" ]]; then
+            CPANEL_PUBLIC_ROOT="/home/${{ secrets.CPANEL_USER }}/public_html"
+          fi
+
+          sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p ${{ secrets.CPANEL_PORT }} ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} "
+            set -e
+            cp /home/${{ secrets.CPANEL_USER }}/serensa_app/.htaccess ${CPANEL_PUBLIC_ROOT}/.htaccess
+            echo 'Installed .htaccess at:' ${CPANEL_PUBLIC_ROOT}/.htaccess
+            head -n 8 ${CPANEL_PUBLIC_ROOT}/.htaccess
+          "
+
       - name: Restart Passenger App
         run: |
           sshpass -p "${{ secrets.CPANEL_SFTP_PASSWORD }}" ssh -p ${{ secrets.CPANEL_PORT }} ${{ secrets.CPANEL_USER }}@${{ secrets.CPANEL_HOST }} "
