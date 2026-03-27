@@ -11,10 +11,4 @@ PassengerEnabled on
 
     # Keep ACME challenge paths reachable for certificate renewals.
     RewriteRule ^\.well-known/ - [L]
-
-    # Let Apache serve existing files/directories directly.
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
-    # Route everything else into Passenger while preserving original path.
-    RewriteRule ^(.*)$ passenger_wsgi.py/$1 [QSA,PT,L]
 </IfModule>
