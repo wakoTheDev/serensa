@@ -318,28 +318,28 @@ jobs:
           print(f"Django DB HOST     : {db.get('HOST')}")
           PY
 
-              # Harmonize legacy contenttypes migration history when schema was edited manually.
-              python3 - << 'PY'
-              import os
-              import psycopg2
+          # Harmonize legacy contenttypes migration history when schema was edited manually.
+          python3 - << 'PY'
+          import os
+          import psycopg2
 
-              conn = psycopg2.connect(
-                dbname=os.getenv('POSTGRES_DB') or os.getenv('CPANEL_DB_NAME'),
-                user=os.getenv('POSTGRES_USER') or os.getenv('DB_USER') or os.getenv('CPANEL_DB_USER') or os.getenv('CPANEL_USER'),
-                password=os.getenv('POSTGRES_PASSWORD') or os.getenv('DATABASE_PASSWORD') or os.getenv('CPANEL_DB_PASSWORD'),
-                host=os.getenv('POSTGRES_HOST', 'localhost'),
-                port=os.getenv('POSTGRES_PORT', '5432'),
-              )
-              try:
-                with conn.cursor() as cur:
+          conn = psycopg2.connect(
+              dbname=os.getenv('POSTGRES_DB') or os.getenv('CPANEL_DB_NAME'),
+              user=os.getenv('POSTGRES_USER') or os.getenv('DB_USER') or os.getenv('CPANEL_DB_USER') or os.getenv('CPANEL_USER'),
+              password=os.getenv('POSTGRES_PASSWORD') or os.getenv('DATABASE_PASSWORD') or os.getenv('CPANEL_DB_PASSWORD'),
+              host=os.getenv('POSTGRES_HOST', 'localhost'),
+              port=os.getenv('POSTGRES_PORT', '5432'),
+          )
+          try:
+              with conn.cursor() as cur:
                   cur.execute("SELECT to_regclass('public.django_content_type')")
                   has_contenttypes_table = cur.fetchone()[0] is not None
 
                   cur.execute("""
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'django_content_type' AND column_name = 'name'
-                    LIMIT 1
+                      SELECT 1
+                      FROM information_schema.columns
+                      WHERE table_name = 'django_content_type' AND column_name = 'name'
+                      LIMIT 1
                   """)
                   has_name_col = cur.fetchone() is not None
 
@@ -347,31 +347,31 @@ jobs:
                   has_migrations_table = cur.fetchone()[0] is not None
 
                   if has_contenttypes_table and not has_name_col and has_migrations_table:
-                    print('Legacy contenttypes schema detected (no name column); syncing django_migrations records')
-                    cur.execute("""
-                      INSERT INTO django_migrations(app, name, applied)
-                      SELECT 'contenttypes', '0001_initial', NOW()
-                      WHERE NOT EXISTS (
-                        SELECT 1 FROM django_migrations
-                        WHERE app = 'contenttypes' AND name = '0001_initial'
-                      )
-                    """)
-                    cur.execute("""
-                      INSERT INTO django_migrations(app, name, applied)
-                      SELECT 'contenttypes', '0002_remove_content_type_name', NOW()
-                      WHERE NOT EXISTS (
-                        SELECT 1 FROM django_migrations
-                        WHERE app = 'contenttypes' AND name = '0002_remove_content_type_name'
-                      )
-                    """)
+                      print('Legacy contenttypes schema detected (no name column); syncing django_migrations records')
+                      cur.execute("""
+                          INSERT INTO django_migrations(app, name, applied)
+                          SELECT 'contenttypes', '0001_initial', NOW()
+                          WHERE NOT EXISTS (
+                              SELECT 1 FROM django_migrations
+                              WHERE app = 'contenttypes' AND name = '0001_initial'
+                          )
+                      """)
+                      cur.execute("""
+                          INSERT INTO django_migrations(app, name, applied)
+                          SELECT 'contenttypes', '0002_remove_content_type_name', NOW()
+                          WHERE NOT EXISTS (
+                              SELECT 1 FROM django_migrations
+                              WHERE app = 'contenttypes' AND name = '0002_remove_content_type_name'
+                          )
+                      """)
                   else:
-                    print('No contenttypes migration-history sync required')
-                conn.commit()
-              finally:
-                conn.close()
-              PY
+                      print('No contenttypes migration-history sync required')
+              conn.commit()
+          finally:
+              conn.close()
+          PY
 
-            python manage.py migrate --fake-initial --noinput --settings=serensa.settings
+          python manage.py migrate --fake-initial --noinput --settings=serensa.settings
           python manage.py collectstatic --noinput --settings=serensa.settings
           echo "Migrations and collectstatic completed"
           ENDSSH
