@@ -276,6 +276,10 @@ jobs:
           source "$VENV"
           cd "$APP_DIR"
 
+          # Ensure remote virtualenv matches pinned versions (including Django < 5.2).
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade -r requirements.txt
+
           # Load env vars — single-quoted values handled correctly by bash source
           set -a
           source .env.cPanel
