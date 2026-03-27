@@ -195,5 +195,5 @@ jobs:
       - name: Deployment Summary
         run: |
           echo "Mode: full-chain"
-          echo "Vercel Deploy: ${{ needs.deploy-vercel.result:-skipped }}"
-          echo "cPanel Deploy: ${{ needs.deploy-cpanel.result:-skipped }}"
+          echo "Vercel Deploy: ${{ needs.deploy-vercel.result }}"
+          echo "cPanel Deploy: ${{ needs.deploy-cpanel.result }}"
