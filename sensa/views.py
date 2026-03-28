@@ -46,27 +46,46 @@ class UserLoginView(LoginView):
         return super().form_invalid(form)
 
     def get_success_url(self):
+        try:
+            # Ensure profile exists and is properly configured before redirect
+            _resolve_profile(self.request.user)
+        except Exception as e:
+            messages.error(self.request, f"Profile setup error: {str(e)}")
+            return "/"
+        
         return self.get_redirect_url() or "/"
 
 
 def _resolve_profile(user):
+    """Ensure user has a valid profile with proper role and configuration.
+    
+    This is defensive — even if the signal didn't create a profile (edge case),
+    or if role isn't set, this ensures it's corrected before use.
+    """
     if not user.is_authenticated:
         return None
 
-    default_role = UserProfile.ADMIN if (user.is_superuser or user.is_staff) else UserProfile.VENDOR
-    profile, created = UserProfile.objects.get_or_create(user=user, defaults={"role": default_role})
+    try:
+        default_role = UserProfile.ADMIN if (user.is_superuser or user.is_staff) else UserProfile.VENDOR
+        profile, created = UserProfile.objects.get_or_create(user=user, defaults={"role": default_role})
 
-    # Keep privileged Django accounts aligned with admin role.
-    if (user.is_superuser or user.is_staff) and profile.role != UserProfile.ADMIN:
-        profile.role = UserProfile.ADMIN
-        profile.save(update_fields=["role"])
+        # Keep privileged Django accounts aligned with admin role.
+        if (user.is_superuser or user.is_staff) and profile.role != UserProfile.ADMIN:
+            profile.role = UserProfile.ADMIN
+            profile.save(update_fields=["role"])
 
-    # Existing profiles without role should still behave safely.
-    if created and not profile.role:
-        profile.role = default_role
-        profile.save(update_fields=["role"])
+        # Existing profiles without role should still behave safely.
+        if created and not profile.role:
+            profile.role = default_role
+            profile.save(update_fields=["role"])
 
-    return profile
+        return profile
+    except Exception as e:
+        # Log but don't fail — allow user to continue
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Error resolving profile for user {user.id}: {str(e)}")
+        return None
 
 
 def _is_admin(user):
@@ -101,12 +120,18 @@ def bootstrap_admin(request):
     if request.method == "POST":
         form = AdminBootstrapForm(request.POST)
         if form.is_valid():
-            form.save()
-            messages.success(
-                request,
-                "Admin account created. Login using username or phone number and password.",
-            )
-            return redirect("login")
+            try:
+                form.save()
+                messages.success(
+                    request,
+                    "Admin account created. Login using username or phone number and password.",
+                )
+                return redirect("login")
+            except Exception as e:
+                messages.error(request, f"Error creating admin account: {str(e)}")
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Admin bootstrap error: {str(e)}", exc_info=True)
     else:
         form = AdminBootstrapForm()
 

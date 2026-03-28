@@ -371,21 +371,39 @@ class AdminBootstrapForm(forms.Form):
         return cleaned_data
 
     def save(self):
+        from django.db import IntegrityError, transaction
+        
         username = self.cleaned_data["username"].strip()
         phone_number = self.cleaned_data["phone_number"]
         password = self.cleaned_data["password"]
 
-        user = User.objects.create_user(
-            username=username,
-            password=password,
-            is_staff=True,
-            is_active=True,
-        )
-        profile, _ = UserProfile.objects.get_or_create(user=user)
-        profile.role = UserProfile.ADMIN
-        profile.phone_number = phone_number
-        profile.save()
-        return user
+        try:
+            with transaction.atomic():
+                # Create user — this may trigger the signal which creates a basic profile
+                user = User.objects.create_user(
+                    username=username,
+                    password=password,
+                    is_staff=True,
+                    is_active=True,
+                )
+                
+                # Get or update the profile created by the signal
+                profile, created = UserProfile.objects.get_or_create(
+                    user=user,
+                    defaults={"role": UserProfile.ADMIN, "phone_number": phone_number}
+                )
+                
+                # If profile already exists (from signal), update it
+                if not created:
+                    profile.role = UserProfile.ADMIN
+                    profile.phone_number = phone_number
+                    profile.save(update_fields=["role", "phone_number"])
+                
+                return user
+        except IntegrityError as e:
+            raise forms.ValidationError(f"Database error during admin creation: {str(e)}")
+        except Exception as e:
+            raise forms.ValidationError(f"Error creating admin account: {str(e)}")
 
 
 class PhoneLoginForm(AuthenticationForm):
