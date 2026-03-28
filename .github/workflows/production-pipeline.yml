@@ -156,6 +156,7 @@ jobs:
 
           # Write .env.cPanel using printf '%s' to preserve special characters exactly
           # Do NOT use %q — it shell-escapes values and corrupts passwords
+          # NOTE: DATABASE_URL is intentionally excluded; cPanel uses its fallback DB config
           {
             printf "DB_ENGINE='%s'\n"                   'django.db.backends.postgresql'
             printf "DJANGO_SETTINGS_MODULE='%s'\n"      'serensa.settings'
@@ -163,7 +164,6 @@ jobs:
             printf "DJANGO_DEBUG='%s'\n"                '0'
             printf "DJANGO_ALLOWED_HOSTS='%s'\n"        "${CPANEL_ALLOWED_HOSTS}"
             printf "DJANGO_CSRF_TRUSTED_ORIGINS='%s'\n" "${CPANEL_CSRF_TRUSTED_ORIGINS}"
-            printf "DATABASE_URL='%s'\n"                "postgresql://${CPANEL_DB_USER}:${CPANEL_DB_PASSWORD}@localhost:5432/${CPANEL_DB_NAME}"
             printf "DB_USER='%s'\n"                     "${CPANEL_DB_USER}"
             printf "DATABASE_PASSWORD='%s'\n"           "${CPANEL_DB_PASSWORD}"
             printf "POSTGRES_DB='%s'\n"                 "${CPANEL_DB_NAME}"
@@ -178,21 +178,19 @@ jobs:
 
           # Verify the env file was written correctly
           test -s deploy_package/.env.cPanel           || { echo ".env.cPanel is empty"; exit 1; }
-            grep -q '^DATABASE_URL=' deploy_package/.env.cPanel       || { echo "DATABASE_URL missing"; exit 1; }
             grep -q '^DB_USER=' deploy_package/.env.cPanel            || { echo "DB_USER missing"; exit 1; }
             grep -q '^DATABASE_PASSWORD=' deploy_package/.env.cPanel  || { echo "DATABASE_PASSWORD missing"; exit 1; }
             grep -q '^POSTGRES_USER=' deploy_package/.env.cPanel       || { echo "POSTGRES_USER missing"; exit 1; }
           grep -q '^POSTGRES_PASSWORD=' deploy_package/.env.cPanel  || { echo "POSTGRES_PASSWORD missing"; exit 1; }
             grep -q '^CPANEL_DB_USER=' deploy_package/.env.cPanel      || { echo "CPANEL_DB_USER missing"; exit 1; }
           grep -q '^CPANEL_DB_PASSWORD=' deploy_package/.env.cPanel || { echo "CPANEL_DB_PASSWORD missing"; exit 1; }
-            echo ".env.cPanel verified — db url, username, and password keys present"
+            echo ".env.cPanel verified — username and password keys present"
 
             # Verify DB credentials are not empty in the file
           python3 - << 'PY'
           import re, sys
           content = open('deploy_package/.env.cPanel').read()
           checks = {
-            'DATABASE_URL': r"^DATABASE_URL='(.*)'$",
             'DB_USER': r"^DB_USER='(.*)'$",
             'DATABASE_PASSWORD': r"^DATABASE_PASSWORD='(.*)'$",
             'POSTGRES_USER': r"^POSTGRES_USER='(.*)'$",
@@ -207,10 +205,6 @@ jobs:
               print(f"ERROR: {key} is missing or empty in .env.cPanel")
               sys.exit(1)
             values[key] = m.group(1)
-
-          if '@' not in values['DATABASE_URL'] or ':' not in values['DATABASE_URL']:
-            print("ERROR: DATABASE_URL appears malformed")
-            sys.exit(1)
 
           print(f"POSTGRES_USER length in file: {len(values['POSTGRES_USER'])}")
           print(f"POSTGRES_PASSWORD length in file: {len(values['POSTGRES_PASSWORD'])}")
@@ -253,7 +247,6 @@ jobs:
           set -e
           APP_DIR="/home/$(whoami)/serensa_app"
           test -s "$APP_DIR/.env.cPanel" || { echo ".env.cPanel missing on cPanel"; exit 1; }
-          grep -q '^DATABASE_URL=' "$APP_DIR/.env.cPanel" || { echo "DATABASE_URL missing in remote .env.cPanel"; exit 1; }
           grep -q '^DB_USER=' "$APP_DIR/.env.cPanel" || { echo "DB_USER missing in remote .env.cPanel"; exit 1; }
           grep -q '^DATABASE_PASSWORD=' "$APP_DIR/.env.cPanel" || { echo "DATABASE_PASSWORD missing in remote .env.cPanel"; exit 1; }
           echo "Remote .env.cPanel upload verified"
