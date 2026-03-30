@@ -125,8 +125,8 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 
-# Auto-logout after 2 hours of inactivity.
-SESSION_COOKIE_AGE = 2 * 60 * 60
+# Auto-logout after 3 minutes of inactivity.
+SESSION_COOKIE_AGE = 3 * 60
 SESSION_SAVE_EVERY_REQUEST = True
 
 DEFAULT_AUTO_FIELD = "sensa.db_fields.SerensaAutoField"

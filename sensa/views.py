@@ -147,6 +147,12 @@ def dashboard_redirect(request):
     return redirect("vendor_dashboard")
 
 
+def session_keepalive(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"status": "expired"}, status=401)
+    return JsonResponse({"status": "ok"}, status=200)
+
+
 @login_required
 @user_passes_test(_is_admin)
 def admin_dashboard(request):

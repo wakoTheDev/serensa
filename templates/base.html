@@ -44,5 +44,162 @@
 
         {% block content %}{% endblock %}
     </main>
+
+    {% if user.is_authenticated %}
+    <script>
+        (function () {
+            var inactivityLimitMs = 3 * 60 * 1000;
+            var warningLeadMs = 30 * 1000;
+            var logoutTimerId;
+            var warningTimerId;
+            var logoutForm = document.querySelector("form[action*='logout']");
+            var keepaliveUrl = "{% url 'session_keepalive' %}";
+            var warningModal;
+            var countdownIntervalId;
+            var secondsLeft = Math.floor(warningLeadMs / 1000);
+
+            if (!logoutForm) {
+                return;
+            }
+
+            function createWarningModal() {
+                var modal = document.createElement("div");
+                modal.setAttribute("id", "session-timeout-warning");
+                modal.style.position = "fixed";
+                modal.style.inset = "0";
+                modal.style.background = "rgba(10, 10, 10, 0.55)";
+                modal.style.display = "none";
+                modal.style.alignItems = "center";
+                modal.style.justifyContent = "center";
+                modal.style.zIndex = "9999";
+
+                var panel = document.createElement("div");
+                panel.style.background = "#ffffff";
+                panel.style.padding = "1rem 1.25rem";
+                panel.style.borderRadius = "0.75rem";
+                panel.style.maxWidth = "360px";
+                panel.style.width = "calc(100% - 2rem)";
+                panel.style.boxShadow = "0 12px 40px rgba(0, 0, 0, 0.2)";
+
+                var title = document.createElement("h3");
+                title.textContent = "Session expiring soon";
+                title.style.margin = "0 0 0.5rem";
+
+                var message = document.createElement("p");
+                message.setAttribute("id", "session-timeout-message");
+                message.style.margin = "0 0 1rem";
+                message.style.fontSize = "0.95rem";
+
+                var actions = document.createElement("div");
+                actions.style.display = "flex";
+                actions.style.gap = "0.5rem";
+                actions.style.justifyContent = "flex-end";
+
+                var logoutButton = document.createElement("button");
+                logoutButton.type = "button";
+                logoutButton.textContent = "Logout now";
+                logoutButton.style.border = "1px solid #d1d5db";
+                logoutButton.style.background = "#f3f4f6";
+                logoutButton.style.padding = "0.45rem 0.7rem";
+                logoutButton.style.borderRadius = "0.5rem";
+                logoutButton.addEventListener("click", logoutUser);
+
+                var stayButton = document.createElement("button");
+                stayButton.type = "button";
+                stayButton.textContent = "Stay logged in";
+                stayButton.style.border = "0";
+                stayButton.style.background = "#111827";
+                stayButton.style.color = "#ffffff";
+                stayButton.style.padding = "0.45rem 0.7rem";
+                stayButton.style.borderRadius = "0.5rem";
+                stayButton.addEventListener("click", keepSessionAlive);
+
+                actions.appendChild(logoutButton);
+                actions.appendChild(stayButton);
+                panel.appendChild(title);
+                panel.appendChild(message);
+                panel.appendChild(actions);
+                modal.appendChild(panel);
+                document.body.appendChild(modal);
+
+                return modal;
+            }
+
+            function updateCountdownMessage() {
+                var messageEl = document.getElementById("session-timeout-message");
+                if (!messageEl) {
+                    return;
+                }
+                messageEl.textContent = "You will be logged out in " + secondsLeft + " seconds due to inactivity.";
+            }
+
+            function showWarning() {
+                if (!warningModal) {
+                    warningModal = createWarningModal();
+                }
+
+                secondsLeft = Math.floor(warningLeadMs / 1000);
+                updateCountdownMessage();
+                warningModal.style.display = "flex";
+
+                window.clearInterval(countdownIntervalId);
+                countdownIntervalId = window.setInterval(function () {
+                    secondsLeft -= 1;
+                    if (secondsLeft <= 0) {
+                        window.clearInterval(countdownIntervalId);
+                        return;
+                    }
+                    updateCountdownMessage();
+                }, 1000);
+            }
+
+            function hideWarning() {
+                if (warningModal) {
+                    warningModal.style.display = "none";
+                }
+                window.clearInterval(countdownIntervalId);
+            }
+
+            function logoutUser() {
+                logoutForm.submit();
+            }
+
+            function keepSessionAlive() {
+                fetch(keepaliveUrl, {
+                    method: "GET",
+                    credentials: "same-origin",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest"
+                    }
+                })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            logoutUser();
+                            return;
+                        }
+                        resetTimer();
+                    })
+                    .catch(function () {
+                        logoutUser();
+                    })
+                ;
+            }
+
+            function resetTimer() {
+                hideWarning();
+                window.clearTimeout(warningTimerId);
+                window.clearTimeout(logoutTimerId);
+                warningTimerId = window.setTimeout(showWarning, inactivityLimitMs - warningLeadMs);
+                logoutTimerId = window.setTimeout(logoutUser, inactivityLimitMs);
+            }
+
+            ["mousemove", "mousedown", "keydown", "touchstart", "scroll"].forEach(function (eventName) {
+                window.addEventListener(eventName, resetTimer, { passive: true });
+            });
+
+            resetTimer();
+        })();
+    </script>
+    {% endif %}
 </body>
 </html>

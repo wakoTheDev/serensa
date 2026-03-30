@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("healthcheck/", views.healthcheck, name="healthcheck"),
+    path("session/keepalive/", views.session_keepalive, name="session_keepalive"),
     path("setup-admin/", views.bootstrap_admin, name="setup_admin"),
     path("", views.dashboard_redirect, name="dashboard"),
     path("admin-dashboard/", views.admin_dashboard, name="admin_dashboard"),
