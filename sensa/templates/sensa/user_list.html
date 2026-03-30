@@ -31,11 +31,13 @@
                             -
                         {% endfor %}
                     </td>
-                    <td>
-                        <a href="{% url 'user_edit_role' user_obj.id %}">Edit</a>
-                        {% if user_obj.profile.role == 'vendor' %}
-                        <a href="{% url 'vendor_remove' user_obj.id %}">Remove Vendor</a>
-                        {% endif %}
+                    <td class="user-actions-cell">
+                        <div class="user-actions-wrap">
+                            <a class="user-action-btn user-action-edit" href="{% url 'user_edit_role' user_obj.id %}">Edit</a>
+                            {% if user_obj.profile.role == 'vendor' %}
+                            <a class="user-action-btn user-action-delete" href="{% url 'vendor_remove' user_obj.id %}">Delete Vendor</a>
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}

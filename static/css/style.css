@@ -247,6 +247,63 @@ th, td {
   min-height: 0;
 }
 
+.user-actions-cell {
+  white-space: nowrap;
+}
+
+.user-actions-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.user-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0.35rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.user-action-btn:hover,
+.user-action-btn:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+}
+
+.user-action-edit {
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
+  border-color: rgba(15, 118, 110, 0.35);
+}
+
+.user-action-edit:hover,
+.user-action-edit:focus-visible {
+  background: #0f766e;
+  color: #ffffff;
+  border-color: #0f766e;
+}
+
+.user-action-delete {
+  background: rgba(185, 28, 28, 0.12);
+  color: #991b1b;
+  border-color: rgba(185, 28, 28, 0.35);
+}
+
+.user-action-delete:hover,
+.user-action-delete:focus-visible {
+  background: #b91c1c;
+  color: #ffffff;
+  border-color: #b91c1c;
+}
+
 .big {
   font-size: 2rem;
   font-weight: 700;

@@ -1519,8 +1519,7 @@ def user_edit_role(request, user_id):
 def vendor_remove(request, user_id):
     target_user = get_object_or_404(User, pk=user_id)
     if request.method == "POST":
-        target_user.is_active = False
-        target_user.save()
-        messages.success(request, "Vendor removed (deactivated).")
+        target_user.delete()
+        messages.success(request, "Vendor permanently deleted.")
         return redirect("user_list")
     return render(request, "sensa/confirm_delete.html", {"item": target_user, "kind": "user"})
