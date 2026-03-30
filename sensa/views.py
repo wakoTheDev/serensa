@@ -191,6 +191,15 @@ def entry_create_or_update(request):
     today = timezone.localdate()
     user = request.user
     selected_shop_id = request.GET.get("shop")
+    selected_date_str = request.GET.get("date")
+
+    if selected_date_str:
+        try:
+            selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            selected_date = today
+    else:
+        selected_date = today
 
     if not (_is_admin(user) or _is_vendor(user)):
         return HttpResponseForbidden("Not authorized.")
@@ -246,17 +255,13 @@ def entry_create_or_update(request):
                 entry.opening_stock = previous_closing
             opening_stock_value = entry.opening_stock
 
-            if entry.entry_date == today or _is_admin(user):
-                entry.submitted_by = user
-                entry.save()
-                messages.success(
-                    request,
-                    "Entry updated successfully." if is_update else "Entry created successfully.",
-                )
-                return redirect(f"{request.path}?shop={entry.shop_id}")
-
-            messages.error(request, "Vendors can only update entries for the same day.")
-            return redirect(f"{request.path}?shop={shop.pk}")
+            entry.submitted_by = user
+            entry.save()
+            messages.success(
+                request,
+                "Entry updated successfully." if is_update else "Entry created successfully.",
+            )
+            return redirect(f"{request.path}?shop={entry.shop_id}&date={entry.entry_date:%Y-%m-%d}")
 
         messages.error(request, "Entry was not saved. Please correct the form errors and try again.")
         bound_shop = form.data.get("shop")
@@ -275,7 +280,7 @@ def entry_create_or_update(request):
                 else (edit_entry.opening_stock if edit_entry else Decimal("0.00"))
             )
     else:
-        initial = {"entry_date": today}
+        initial = {"entry_date": selected_date}
 
         if _is_vendor(user):
             accessible_shops = _vendor_accessible_shops(user)
@@ -285,13 +290,13 @@ def entry_create_or_update(request):
                 selected_shop = accessible_shops.first()
             if selected_shop:
                 initial["shop"] = selected_shop
-                edit_entry = DailyEntry.objects.filter(shop=selected_shop, entry_date=today).first()
+                edit_entry = DailyEntry.objects.filter(shop=selected_shop, entry_date=selected_date).first()
 
         elif _is_admin(user) and selected_shop_id:
             selected_shop = Shop.objects.filter(pk=selected_shop_id).first()
             if selected_shop:
                 initial["shop"] = selected_shop
-                edit_entry = DailyEntry.objects.filter(shop=selected_shop, entry_date=today).first()
+                edit_entry = DailyEntry.objects.filter(shop=selected_shop, entry_date=selected_date).first()
 
         if edit_entry:
             previous_closing = _get_previous_closing_stock(
@@ -311,7 +316,7 @@ def entry_create_or_update(request):
             )
         else:
             preview_shop = initial.get("shop")
-            preview_date = initial.get("entry_date", today)
+            preview_date = initial.get("entry_date", selected_date)
             previous_closing = _get_previous_closing_stock(preview_shop, preview_date)
             manual_opening_required = previous_closing is None
             opening_stock_value = previous_closing if previous_closing is not None else Decimal("0.00")
@@ -329,9 +334,9 @@ def entry_create_or_update(request):
         "manual_opening_required": manual_opening_required,
         "form_title": "Update Shop Values" if edit_entry else "Feed Shop Values",
         "form_subtitle": (
-            "Editing today's saved entry. Update the fields and submit changes."
+            f"Editing saved entry for {selected_date:%Y-%m-%d}. Update the fields and submit changes."
             if edit_entry
-            else "Create today's entry for the selected shop."
+            else f"Create entry for {selected_date:%Y-%m-%d} for the selected shop."
         ),
         "submit_label": "Update Entry" if edit_entry else "Save Entry",
     }

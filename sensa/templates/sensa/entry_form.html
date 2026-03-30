@@ -33,6 +33,7 @@
 <script>
 (() => {
     const shopField = document.getElementById("id_shop");
+    const dateField = document.getElementById("id_entry_date");
     const shopTypeRow = document.getElementById("shop-type-row");
     const shopTypeDisplay = document.getElementById("id_shop_type_display");
     if (!shopField) return;
@@ -65,6 +66,24 @@
         }
         window.location.search = params.toString();
     });
+
+    if (dateField) {
+        dateField.addEventListener("change", () => {
+            const params = new URLSearchParams(window.location.search);
+            if (shopField.value) {
+                params.set("shop", shopField.value);
+            } else {
+                params.delete("shop");
+            }
+
+            if (dateField.value) {
+                params.set("date", dateField.value);
+            } else {
+                params.delete("date");
+            }
+            window.location.search = params.toString();
+        });
+    }
 })();
 </script>
 {% endblock %}
