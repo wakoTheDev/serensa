@@ -24,5 +24,6 @@ urlpatterns = [
     path("users/", views.user_list, name="user_list"),
     path("users/new/", views.user_create, name="user_create"),
     path("users/<str:user_id>/edit/", views.user_edit_role, name="user_edit_role"),
+    path("users/<str:user_id>/reset-password/", views.user_reset_password, name="user_reset_password"),
     path("users/<str:user_id>/remove-vendor/", views.vendor_remove, name="vendor_remove"),
 ]

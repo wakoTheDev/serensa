@@ -9,5 +9,8 @@
         {{ form.as_p }}
         <button class="btn" type="submit">Save User</button>
     </form>
+    {% if target_user %}
+    <p class="muted">Forgotten password? <a href="{% url 'user_reset_password' target_user.id %}">Reset password</a></p>
+    {% endif %}
 </section>
 {% endblock %}

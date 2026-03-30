@@ -6,6 +6,7 @@ from io import BytesIO
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
+from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.views import LoginView
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Sum
@@ -24,6 +25,7 @@ from .forms import (
     ReportFilterForm,
     ShopForm,
     UserManagementForm,
+    UserPasswordResetForm,
     UserRoleUpdateForm,
 )
 from .models import BankBalanceSnapshot, DailyEntry, JengaApiSettings, Shop, UserProfile
@@ -1509,6 +1511,33 @@ def user_edit_role(request, user_id):
         {
             "form": form,
             "title": f"Update {target_user.username}",
+            "target_user": target_user,
+        },
+    )
+
+
+@login_required
+@user_passes_test(_is_admin)
+def user_reset_password(request, user_id):
+    target_user = get_object_or_404(User, pk=user_id)
+
+    if request.method == "POST":
+        form = UserPasswordResetForm(request.POST)
+        if form.is_valid():
+            form.save(target_user)
+            if request.user.pk == target_user.pk:
+                update_session_auth_hash(request, target_user)
+            messages.success(request, f"Password reset for {target_user.username}.")
+            return redirect("user_edit_role", user_id=target_user.id)
+    else:
+        form = UserPasswordResetForm()
+
+    return render(
+        request,
+        "sensa/user_password_reset.html",
+        {
+            "form": form,
+            "title": f"Reset password for {target_user.username}",
             "target_user": target_user,
         },
     )

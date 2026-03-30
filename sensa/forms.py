@@ -332,6 +332,33 @@ class UserRoleUpdateForm(forms.Form):
         return self.profile
 
 
+class UserPasswordResetForm(forms.Form):
+    new_password = forms.CharField(
+        widget=forms.PasswordInput,
+        min_length=4,
+        label="New password",
+    )
+    confirm_password = forms.CharField(
+        widget=forms.PasswordInput,
+        label="Confirm password",
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        new_password = cleaned_data.get("new_password")
+        confirm_password = cleaned_data.get("confirm_password")
+
+        if new_password and confirm_password and new_password != confirm_password:
+            self.add_error("confirm_password", "Passwords do not match.")
+
+        return cleaned_data
+
+    def save(self, user):
+        user.set_password(self.cleaned_data["new_password"])
+        user.save(update_fields=["password"])
+        return user
+
+
 class AdminBootstrapForm(forms.Form):
     username = forms.CharField(max_length=150)
     phone_number = forms.CharField(
