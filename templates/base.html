@@ -17,7 +17,10 @@
 
     {% if user.is_authenticated %}
     <header class="topbar">
-        <h1 class="brand">Serensa Enterprise</h1>
+        <div class="brand-block">
+            <h1 class="brand">Serensa Enterprise</h1>
+            <p class="brand-user">{{ user.username }}</p>
+        </div>
         <nav>
             <a href="{% url 'dashboard' %}">Dashboard</a>
             <a href="{% url 'entry_create_or_update' %}">New Entry</a>

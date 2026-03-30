@@ -64,6 +64,19 @@ h1, h2, h3 {
   font-size: 1.25rem;
 }
 
+.brand-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.brand-user {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #4b5563;
+  font-weight: 600;
+}
+
 nav {
   display: flex;
   align-items: center;
