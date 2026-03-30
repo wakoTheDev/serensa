@@ -31,6 +31,7 @@
     <p>{{ form.closing_stock.label_tag }}{{ form.closing_stock }}{{ form.closing_stock.errors }}</p>
     <p>{{ form.expenses.label_tag }}{{ form.expenses }}{{ form.expenses.errors }}</p>
 
+    {% if show_submit_button %}
     <p class="entry-form-actions">
         <button class="btn" type="submit">{{ submit_label }}</button>
         {% if next_url %}
@@ -39,6 +40,14 @@
         <a class="btn btn-alt" href="{% url 'dashboard' %}">Cancel</a>
         {% endif %}
     </p>
+    {% else %}
+    <p class="muted entry-form-readonly-note">This entry already exists and is view-only for vendor users.</p>
+    {% if next_url %}
+    <p class="entry-form-actions"><a class="btn btn-alt" href="{{ next_url }}">Back</a></p>
+    {% else %}
+    <p class="entry-form-actions"><a class="btn btn-alt" href="{% url 'dashboard' %}">Back</a></p>
+    {% endif %}
+    {% endif %}
     </form>
 </section>
 

@@ -228,6 +228,14 @@ def entry_create_or_update(request):
             except ValueError:
                 posted_entry_date = None
 
+        if _is_vendor(user) and edit_entry:
+            messages.error(request, "You cannot update an existing entry. Please contact an admin for changes.")
+            redirect_shop = edit_entry.shop_id if edit_entry else shop_id
+            redirect_date = edit_entry.entry_date if edit_entry else posted_entry_date
+            if redirect_shop and redirect_date:
+                return redirect(f"{request.path}?shop={redirect_shop}&date={redirect_date:%Y-%m-%d}")
+            return redirect(request.path)
+
         previous_closing = _get_previous_closing_stock(
             posted_shop,
             posted_entry_date,
@@ -340,16 +348,31 @@ def entry_create_or_update(request):
                 calculated_opening_stock=opening_stock_value,
             )
 
+    is_vendor_readonly_existing_entry = bool(_is_vendor(user) and edit_entry)
+    if is_vendor_readonly_existing_entry:
+        for field in form.fields.values():
+            field.disabled = True
+
     context = {
         "form": form,
         "is_edit_mode": bool(edit_entry),
+        "is_vendor_readonly_existing_entry": is_vendor_readonly_existing_entry,
+        "show_submit_button": not is_vendor_readonly_existing_entry,
         "opening_stock_value": opening_stock_value,
         "manual_opening_required": manual_opening_required,
-        "form_title": "Update Shop Values" if edit_entry else "Feed Shop Values",
+        "form_title": (
+            "View Shop Values"
+            if is_vendor_readonly_existing_entry
+            else ("Update Shop Values" if edit_entry else "Feed Shop Values")
+        ),
         "form_subtitle": (
-            f"Editing saved entry for {selected_date:%Y-%m-%d}. Update the fields and submit changes."
-            if edit_entry
-            else f"Create entry for {selected_date:%Y-%m-%d} for the selected shop."
+            f"A saved entry already exists for {selected_date:%Y-%m-%d}. Vendor users can view only; admins can edit."
+            if is_vendor_readonly_existing_entry
+            else (
+                f"Editing saved entry for {selected_date:%Y-%m-%d}. Update the fields and submit changes."
+                if edit_entry
+                else f"Create entry for {selected_date:%Y-%m-%d} for the selected shop."
+            )
         ),
         "submit_label": "Update Entry" if edit_entry else "Save Entry",
     }
