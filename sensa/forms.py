@@ -57,6 +57,8 @@ class DailyEntryForm(forms.ModelForm):
             "entry_date",
             "opening_stock",
             "stock_added",
+            "buying_value",
+            "expired_value",
             "expenses",
             "sales_value",
             "debts",
@@ -94,9 +96,19 @@ class DailyEntryForm(forms.ModelForm):
         self.fields["sales_value"].label = "Sales"
         self.fields["debts"].label = "Debts"
         self.fields["stock_added"].label = "Added Stock"
+        self.fields["buying_value"].label = "Buying Value"
+        self.fields["expired_value"].label = "Expired Value"
         self.fields["opening_stock"].label = "Existing Stock"
-        self.fields["closing_stock"].label = "Closing Stock"
+        self.fields["closing_stock"].label = "Closing Stock (Auto)"
         self.fields["expenses"].label = "Expenses"
+        self.fields["debts"].required = False
+        self.fields["debts"].initial = Decimal("0.00")
+        self.fields["expired_value"].required = False
+        self.fields["expired_value"].initial = Decimal("0.00")
+        self.fields["stock_added"].required = False
+        self.fields["stock_added"].initial = Decimal("0.00")
+        self.fields["closing_stock"].required = False
+        self.fields["closing_stock"].disabled = True
         self.fields["shop"].help_text = (
             "Data is captured per operational shop. If an enterprise has subshops, submit to each subshop."
         )
@@ -118,8 +130,16 @@ class DailyEntryForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         shop = cleaned_data.get("shop")
-        sales_value = cleaned_data.get("sales_value")
-        debts = cleaned_data.get("debts")
+        opening_stock = cleaned_data.get("opening_stock") or Decimal("0.00")
+        stock_added = cleaned_data.get("stock_added") or Decimal("0.00")
+        buying_value = cleaned_data.get("buying_value") or Decimal("0.00")
+        expired_value = cleaned_data.get("expired_value") or Decimal("0.00")
+        sales_value = cleaned_data.get("sales_value") or Decimal("0.00")
+        debts = cleaned_data.get("debts") or Decimal("0.00")
+
+        cleaned_data["stock_added"] = stock_added
+        cleaned_data["expired_value"] = expired_value
+        cleaned_data["debts"] = debts
 
         if shop and shop.subshops.filter(active=True).exists():
             self.add_error(
@@ -127,11 +147,20 @@ class DailyEntryForm(forms.ModelForm):
                 "This is a parent enterprise. Submit entries to its subshops instead.",
             )
 
-        if sales_value is None or debts is None:
-            return cleaned_data
-
         if debts > sales_value:
             self.add_error("debts", "Debts cannot be greater than sales.")
+
+        stock_available = opening_stock + stock_added
+        consumed_and_expired = buying_value + expired_value
+
+        if consumed_and_expired > stock_available:
+            self.add_error(
+                None,
+                "Buying Value + Expired Value cannot be greater than Existing Stock + Added Stock.",
+            )
+
+        closing_stock = stock_available - consumed_and_expired
+        cleaned_data["closing_stock"] = closing_stock if closing_stock > Decimal("0.00") else Decimal("0.00")
 
         return cleaned_data
 
@@ -139,6 +168,7 @@ class DailyEntryForm(forms.ModelForm):
         entry = super().save(commit=False)
         sales_value = self.cleaned_data.get("sales_value") or Decimal("0.00")
         debts = self.cleaned_data.get("debts") or Decimal("0.00")
+        entry.closing_stock = self.cleaned_data.get("closing_stock") or Decimal("0.00")
         entry.cash_received = sales_value - debts
 
         if commit:

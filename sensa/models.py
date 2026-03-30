@@ -114,6 +114,20 @@ class DailyEntry(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0.00"))],
     )
+    buying_value = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        default=Decimal("0.00"),
+        help_text="Cost price value of goods sold for the day.",
+    )
+    expired_value = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        default=Decimal("0.00"),
+        help_text="Cost value of expired or wasted goods for the day.",
+    )
     expenses = models.DecimalField(
         max_digits=14,
         decimal_places=2,
@@ -173,6 +187,19 @@ class DailyEntry(models.Model):
         return self.sales_value or Decimal("0.00")
 
     @property
+    def effective_cost_of_goods(self):
+        buying_value = self.buying_value or Decimal("0.00")
+        if buying_value > Decimal("0.00"):
+            return buying_value
+        return self.stock_consumed
+
+    @property
+    def gross_profit(self):
+        expired_value = self.expired_value or Decimal("0.00")
+        extra_waste_cost = expired_value if (self.buying_value or Decimal("0.00")) > Decimal("0.00") else Decimal("0.00")
+        return self.total_sales_value - self.effective_cost_of_goods - extra_waste_cost
+
+    @property
     def mobile_money_received(self):
         paid_sales = self.total_sales_value - (self.debts or Decimal("0.00"))
         mobile_money = paid_sales - (self.cash_received or Decimal("0.00"))
@@ -180,8 +207,8 @@ class DailyEntry(models.Model):
 
     @property
     def profit_or_loss(self):
-        # Gross margin after cost of stock sold and operating expenses.
-        return self.total_sales_value - self.stock_consumed - (self.expenses or Decimal("0.00"))
+        # Net margin after cost of goods, expired stock (when tracked), and operating expenses.
+        return self.gross_profit - (self.expenses or Decimal("0.00"))
 
 
 class JengaApiSettings(models.Model):

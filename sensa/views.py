@@ -255,6 +255,12 @@ def entry_create_or_update(request):
                 entry.opening_stock = previous_closing
             opening_stock_value = entry.opening_stock
 
+            stock_added = entry.stock_added or Decimal("0.00")
+            buying_value = entry.buying_value or Decimal("0.00")
+            expired_value = entry.expired_value or Decimal("0.00")
+            computed_closing = (entry.opening_stock or Decimal("0.00")) + stock_added - buying_value - expired_value
+            entry.closing_stock = computed_closing if computed_closing > Decimal("0.00") else Decimal("0.00")
+
             entry.submitted_by = user
             entry.save()
             messages.success(
@@ -370,6 +376,13 @@ def entry_admin_edit(request, entry_id):
                 updated.opening_stock = form.cleaned_data["opening_stock"]
             else:
                 updated.opening_stock = previous_closing
+
+            stock_added = updated.stock_added or Decimal("0.00")
+            buying_value = updated.buying_value or Decimal("0.00")
+            expired_value = updated.expired_value or Decimal("0.00")
+            computed_closing = (updated.opening_stock or Decimal("0.00")) + stock_added - buying_value - expired_value
+            updated.closing_stock = computed_closing if computed_closing > Decimal("0.00") else Decimal("0.00")
+
             updated.submitted_by = request.user
             updated.save()
             messages.success(request, "Entry updated successfully.")
@@ -677,6 +690,8 @@ def _build_report_dataset(query_data):
     total_sales = sum((entry.sales_value or Decimal("0.00") for entry in normalized_entries), Decimal("0.00"))
     total_expenses = sum((entry.expenses or Decimal("0.00") for entry in normalized_entries), Decimal("0.00"))
     total_debts = sum((entry.debts or Decimal("0.00") for entry in normalized_entries), Decimal("0.00"))
+    total_buying_value = sum((entry.buying_value or Decimal("0.00") for entry in normalized_entries), Decimal("0.00"))
+    total_expired_value = sum((entry.expired_value or Decimal("0.00") for entry in normalized_entries), Decimal("0.00"))
     total_cash = sum((entry.cash_received or Decimal("0.00") for entry in normalized_entries), Decimal("0.00"))
     total_mobile_money = sum((entry.mobile_money_received for entry in normalized_entries), Decimal("0.00"))
     paid_sales_total = total_sales - total_debts
@@ -690,6 +705,8 @@ def _build_report_dataset(query_data):
         "expenses": total_expenses,
         "sales_value": total_sales,
         "debts": total_debts,
+        "buying_value": total_buying_value,
+        "expired_value": total_expired_value,
         "closing_stock": stock_metrics["closing_stock"],
         "cash_received": total_cash,
         "mobile_money": total_mobile_money,
@@ -706,24 +723,25 @@ def _build_report_dataset(query_data):
         )
     )
     monthly_stock_metrics = _calculate_stock_metrics(monthly_entries)
-    monthly_sales = sum((entry.sales_value or Decimal("0.00") for entry in monthly_entries), Decimal("0.00"))
-    monthly_expenses = sum((entry.expenses or Decimal("0.00") for entry in monthly_entries), Decimal("0.00"))
-    monthly_business_profit = monthly_sales - monthly_stock_metrics["stock_consumed"] - monthly_expenses
+    monthly_business_profit = sum((entry.profit_or_loss for entry in monthly_entries), Decimal("0.00"))
 
     monthly_sales_by_shop = {}
     monthly_expenses_by_shop = {}
+    monthly_profit_by_shop_map = {}
     for entry in monthly_entries:
         monthly_sales_by_shop.setdefault(entry.shop_id, Decimal("0.00"))
         monthly_expenses_by_shop.setdefault(entry.shop_id, Decimal("0.00"))
+        monthly_profit_by_shop_map.setdefault(entry.shop_id, Decimal("0.00"))
         monthly_sales_by_shop[entry.shop_id] += entry.sales_value or Decimal("0.00")
         monthly_expenses_by_shop[entry.shop_id] += entry.expenses or Decimal("0.00")
+        monthly_profit_by_shop_map[entry.shop_id] += entry.profit_or_loss or Decimal("0.00")
 
     monthly_profit_by_shop = []
     for stock_row in monthly_stock_metrics["by_shop"]:
         shop_id = stock_row["shop"].id
         shop_sales = monthly_sales_by_shop.get(shop_id, Decimal("0.00"))
         shop_expenses = monthly_expenses_by_shop.get(shop_id, Decimal("0.00"))
-        shop_profit = shop_sales - stock_row["stock_consumed"] - shop_expenses
+        shop_profit = monthly_profit_by_shop_map.get(shop_id, Decimal("0.00"))
         monthly_profit_by_shop.append(
             {
                 "shop": stock_row["shop"],
@@ -818,9 +836,7 @@ def _build_report_dataset(query_data):
     general_total_debts = sum((entry.debts or Decimal("0.00") for entry in normalized_general_entries), Decimal("0.00"))
     general_total_cash = sum((entry.cash_received or Decimal("0.00") for entry in normalized_general_entries), Decimal("0.00"))
     general_total_mobile = sum((entry.mobile_money_received for entry in normalized_general_entries), Decimal("0.00"))
-    general_profit_or_loss = (
-        general_total_sales - general_stock_metrics["stock_consumed"] - general_total_expenses
-    )
+    general_profit_or_loss = sum((entry.profit_or_loss or Decimal("0.00") for entry in normalized_general_entries), Decimal("0.00"))
     general_net_profit = (
         general_profit_or_loss if general_profit_or_loss > Decimal("0.00") else Decimal("0.00")
     )
@@ -956,7 +972,7 @@ def _build_report_dataset(query_data):
         s_debts = sum((e.debts or Decimal("0.00") for e in s_entries), Decimal("0.00"))
         s_cash = sum((e.cash_received or Decimal("0.00") for e in s_entries), Decimal("0.00"))
         s_mobile = sum((e.mobile_money_received for e in s_entries), Decimal("0.00"))
-        s_profit_total = s_sales - s_stock["stock_consumed"] - s_expenses
+        s_profit_total = sum((e.profit_or_loss or Decimal("0.00") for e in s_entries), Decimal("0.00"))
         s_net_profit = s_profit_total if s_profit_total > Decimal("0.00") else Decimal("0.00")
         s_net_loss = abs(s_profit_total) if s_profit_total < Decimal("0.00") else Decimal("0.00")
         pie_values = [

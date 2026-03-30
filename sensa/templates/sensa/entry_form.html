@@ -22,9 +22,28 @@
     <p>{{ form.sales_value.label_tag }}{{ form.sales_value }}{{ form.sales_value.errors }}</p>
     <p>{{ form.debts.label_tag }}{{ form.debts }}{{ form.debts.errors }}</p>
     <p>{{ form.stock_added.label_tag }}{{ form.stock_added }}{{ form.stock_added.errors }}</p>
+    <p>{{ form.buying_value.label_tag }}{{ form.buying_value }}{{ form.buying_value.errors }}</p>
+    <p>{{ form.expired_value.label_tag }}{{ form.expired_value }}{{ form.expired_value.errors }}</p>
     <p>{{ form.opening_stock.label_tag }}{{ form.opening_stock }}{{ form.opening_stock.errors }}</p>
     <p>{{ form.closing_stock.label_tag }}{{ form.closing_stock }}{{ form.closing_stock.errors }}</p>
     <p>{{ form.expenses.label_tag }}{{ form.expenses }}{{ form.expenses.errors }}</p>
+
+    <p>
+        <label for="id_break_even_sales_preview">Break-even Sales (Auto)</label>
+        <input id="id_break_even_sales_preview" type="number" step="0.01" readonly>
+    </p>
+    <p>
+        <label for="id_cash_received_preview">Cash Received (Auto)</label>
+        <input id="id_cash_received_preview" type="number" step="0.01" readonly>
+    </p>
+    <p>
+        <label for="id_gross_profit_preview">Gross Profit (Auto)</label>
+        <input id="id_gross_profit_preview" type="number" step="0.01" readonly>
+    </p>
+    <p>
+        <label for="id_net_profit_preview">Net Profit/Loss (Auto)</label>
+        <input id="id_net_profit_preview" type="number" step="0.01" readonly>
+    </p>
 
     <button class="btn" type="submit">{{ submit_label }}</button>
     </form>
@@ -34,6 +53,18 @@
 (() => {
     const shopField = document.getElementById("id_shop");
     const dateField = document.getElementById("id_entry_date");
+    const salesField = document.getElementById("id_sales_value");
+    const debtsField = document.getElementById("id_debts");
+    const openingField = document.getElementById("id_opening_stock");
+    const addedField = document.getElementById("id_stock_added");
+    const buyingField = document.getElementById("id_buying_value");
+    const expiredField = document.getElementById("id_expired_value");
+    const closingField = document.getElementById("id_closing_stock");
+    const expensesField = document.getElementById("id_expenses");
+    const breakEvenSalesPreviewField = document.getElementById("id_break_even_sales_preview");
+    const cashReceivedPreviewField = document.getElementById("id_cash_received_preview");
+    const grossProfitPreviewField = document.getElementById("id_gross_profit_preview");
+    const netProfitPreviewField = document.getElementById("id_net_profit_preview");
     const shopTypeRow = document.getElementById("shop-type-row");
     const shopTypeDisplay = document.getElementById("id_shop_type_display");
     if (!shopField) return;
@@ -55,6 +86,52 @@
     };
 
     updateShopType();
+
+    const asNumber = (value) => {
+        const parsed = parseFloat(value || "0");
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const roundMoney = (value) => Math.round(value * 100) / 100;
+
+    const updateAutoFigures = () => {
+        if (!cashReceivedPreviewField || !grossProfitPreviewField || !netProfitPreviewField) {
+            return;
+        }
+
+        const openingStock = asNumber(openingField ? openingField.value : 0);
+        const addedStock = asNumber(addedField ? addedField.value : 0);
+        const sales = asNumber(salesField ? salesField.value : 0);
+        const debts = asNumber(debtsField ? debtsField.value : 0);
+        const buying = asNumber(buyingField ? buyingField.value : 0);
+        const expired = asNumber(expiredField ? expiredField.value : 0);
+        const expenses = asNumber(expensesField ? expensesField.value : 0);
+
+        const computedClosing = openingStock + addedStock - buying - expired;
+        const cashReceived = sales - debts;
+        const grossProfit = sales - buying - expired;
+        const netProfit = grossProfit - expenses;
+        const breakEvenSales = buying + expired + expenses;
+
+        if (closingField) {
+            closingField.value = roundMoney(Math.max(computedClosing, 0)).toFixed(2);
+        }
+        if (breakEvenSalesPreviewField) {
+            breakEvenSalesPreviewField.value = roundMoney(breakEvenSales).toFixed(2);
+        }
+
+        cashReceivedPreviewField.value = roundMoney(cashReceived).toFixed(2);
+        grossProfitPreviewField.value = roundMoney(grossProfit).toFixed(2);
+        netProfitPreviewField.value = roundMoney(netProfit).toFixed(2);
+    };
+
+    [openingField, addedField, salesField, debtsField, buyingField, expiredField, expensesField].forEach((field) => {
+        if (field) {
+            field.addEventListener("input", updateAutoFigures);
+        }
+    });
+
+    updateAutoFigures();
 
     shopField.addEventListener("change", () => {
         updateShopType();
