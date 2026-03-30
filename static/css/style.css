@@ -149,6 +149,15 @@ a, .link-btn {
   align-self: flex-end;
 }
 
+.entry-form-grid .entry-form-actions {
+  grid-column: 1 / -1;
+  margin-top: 0.25rem;
+}
+
+.entry-form-grid .entry-form-actions .btn {
+  width: fit-content;
+}
+
 .entry-form-grid p {
   display: flex;
   flex-direction: column;

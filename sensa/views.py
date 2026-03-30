@@ -209,11 +209,18 @@ def entry_create_or_update(request):
     manual_opening_required = False
 
     if request.method == "POST":
+        entry_id = request.POST.get("entry_id")
         shop_id = request.POST.get("shop")
         entry_date = request.POST.get("entry_date")
         posted_shop = None
         posted_entry_date = None
-        if shop_id and entry_date:
+        if entry_id:
+            edit_entry = DailyEntry.objects.filter(pk=entry_id).select_related("shop").first()
+            if edit_entry:
+                posted_shop = edit_entry.shop
+                posted_entry_date = edit_entry.entry_date
+
+        if not edit_entry and shop_id and entry_date:
             edit_entry = DailyEntry.objects.filter(shop_id=shop_id, entry_date=entry_date).first()
             posted_shop = Shop.objects.filter(pk=shop_id).first()
             try:
