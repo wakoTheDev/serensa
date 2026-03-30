@@ -75,6 +75,7 @@ class DailyEntryForm(forms.ModelForm):
         require_opening_stock = kwargs.pop("require_opening_stock", False)
         calculated_opening_stock = kwargs.pop("calculated_opening_stock", Decimal("0.00"))
         super().__init__(*args, **kwargs)
+        self.require_opening_stock = require_opening_stock
 
         base_shop_queryset = Shop.objects.filter(active=True).exclude(subshops__active=True).distinct()
         self.fields["shop"].queryset = base_shop_queryset.order_by("parent_shop__name", "name")
@@ -103,6 +104,8 @@ class DailyEntryForm(forms.ModelForm):
         self.fields["expenses"].label = "Expenses"
         self.fields["debts"].required = False
         self.fields["debts"].initial = Decimal("0.00")
+        self.fields["buying_value"].required = False
+        self.fields["buying_value"].initial = Decimal("0.00")
         self.fields["expired_value"].required = False
         self.fields["expired_value"].initial = Decimal("0.00")
         self.fields["stock_added"].required = False
@@ -138,8 +141,18 @@ class DailyEntryForm(forms.ModelForm):
         debts = cleaned_data.get("debts") or Decimal("0.00")
 
         cleaned_data["stock_added"] = stock_added
+        cleaned_data["buying_value"] = buying_value
         cleaned_data["expired_value"] = expired_value
         cleaned_data["debts"] = debts
+
+        buying_required = stock_added > Decimal("0.00") or (
+            self.require_opening_stock and opening_stock > Decimal("0.00")
+        )
+        if buying_required and buying_value <= Decimal("0.00"):
+            self.add_error(
+                "buying_value",
+                "Buying Value is required when Added Stock is entered or when submitting Existing Stock for a shop without previous records.",
+            )
 
         if shop and shop.subshops.filter(active=True).exists():
             self.add_error(
