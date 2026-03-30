@@ -33,6 +33,11 @@
 
     <p class="entry-form-actions">
         <button class="btn" type="submit">{{ submit_label }}</button>
+        {% if next_url %}
+        <a class="btn btn-alt" href="{{ next_url }}">Cancel</a>
+        {% else %}
+        <a class="btn btn-alt" href="{% url 'dashboard_redirect' %}">Cancel</a>
+        {% endif %}
     </p>
     </form>
 </section>

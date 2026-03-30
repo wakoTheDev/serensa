@@ -9,7 +9,20 @@
         {% if next_url %}
         <input type="hidden" name="next" value="{{ next_url }}">
         {% endif %}
-        <button class="btn danger" type="submit">Confirm</button>
+        <p class="form-action-row">
+            <button class="btn danger" type="submit">Confirm</button>
+            {% if next_url %}
+            <a class="btn btn-alt" href="{{ next_url }}">Cancel</a>
+            {% elif kind == 'user' %}
+            <a class="btn btn-alt" href="{% url 'user_list' %}">Cancel</a>
+            {% elif kind == 'shop' %}
+            <a class="btn btn-alt" href="{% url 'shop_list' %}">Cancel</a>
+            {% elif kind == 'entry' %}
+            <a class="btn btn-alt" href="{% url 'report_view' %}">Cancel</a>
+            {% else %}
+            <a class="btn btn-alt" href="{% url 'dashboard_redirect' %}">Cancel</a>
+            {% endif %}
+        </p>
     </form>
 </section>
 {% endblock %}

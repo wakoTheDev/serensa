@@ -7,7 +7,10 @@
     <form method="post" class="form-grid">
         {% csrf_token %}
         {{ form.as_p }}
-        <button class="btn" type="submit">Save User</button>
+        <p class="form-action-row">
+            <button class="btn" type="submit">Save User</button>
+            <a class="btn btn-alt" href="{% url 'user_list' %}">Cancel</a>
+        </p>
     </form>
     {% if target_user %}
     <p class="muted">Forgotten password? <a href="{% url 'user_reset_password' target_user.id %}">Reset password</a></p>
