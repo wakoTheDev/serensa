@@ -4,8 +4,10 @@
 <section class="panel">
     <h2>{{ title }}</h2>
     <p class="muted">Provide full account details for every new user: unique username and password for login. Phone number is required only for Admin role.</p>
-    <form method="post" class="form-grid">
+    <form method="post" class="form-grid" autocomplete="off">
         {% csrf_token %}
+        <input type="text" name="fake_username" autocomplete="username" style="display:none">
+        <input type="password" name="fake_password" autocomplete="current-password" style="display:none">
         {{ form.as_p }}
         <p class="form-action-row">
             <button class="btn" type="submit">Save User</button>

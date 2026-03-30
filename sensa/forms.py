@@ -265,6 +265,21 @@ class UserManagementForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["username"].required = True
+        self.fields["username"].widget.attrs.update(
+            {
+                "autocomplete": "off",
+                "autocapitalize": "none",
+                "spellcheck": "false",
+                "placeholder": "Enter new user's username",
+            }
+        )
+        self.fields["password"].widget.attrs.update(
+            {
+                "autocomplete": "new-password",
+                "placeholder": "Set password for the new user",
+            }
+        )
         self.fields["assigned_shops"].help_text = (
             "Assign parent enterprises. If a parent has subshops, vendors will submit entries to those child shops (not the parent)."
         )
