@@ -350,8 +350,19 @@ def entry_create_or_update(request):
 
     is_vendor_readonly_existing_entry = bool(_is_vendor(user) and edit_entry)
     if is_vendor_readonly_existing_entry:
-        for field in form.fields.values():
-            field.disabled = True
+        readonly_fields = [
+            "opening_stock",
+            "stock_added",
+            "buying_value",
+            "expired_value",
+            "expenses",
+            "sales_value",
+            "debts",
+            "closing_stock",
+        ]
+        for field_name in readonly_fields:
+            if field_name in form.fields:
+                form.fields[field_name].disabled = True
 
     context = {
         "form": form,
