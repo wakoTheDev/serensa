@@ -276,16 +276,17 @@ class UserManagementForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         role = cleaned_data.get("role")
-        password = cleaned_data.get("password", "")
+        username = (cleaned_data.get("username") or "").strip()
         phone_number = (cleaned_data.get("phone_number") or "").strip()
+
+        if not username:
+            self.add_error("username", "Username is required.")
 
         if role == UserProfile.ADMIN:
             if not phone_number:
                 self.add_error("phone_number", "Phone number is required for admin accounts.")
             elif not phone_number.isdigit():
                 self.add_error("phone_number", "Phone number must contain numbers only.")
-            if password and not password.isdigit():
-                self.add_error("password", "Admin password must contain numbers only.")
 
             existing_profile = UserProfile.objects.filter(phone_number=phone_number).first()
             if existing_profile:
@@ -303,9 +304,8 @@ class UserManagementForm(forms.ModelForm):
         phone_number = (self.cleaned_data.get("phone_number") or "").strip()
         shops = self.cleaned_data["assigned_shops"]
 
-        if role == UserProfile.ADMIN:
-            user.username = phone_number
-            user.is_staff = True
+        user.username = (self.cleaned_data.get("username") or "").strip()
+        user.is_staff = role == UserProfile.ADMIN
 
         user.set_password(password)
         if commit:
@@ -368,9 +368,7 @@ class UserRoleUpdateForm(forms.Form):
         self.profile.save()
         self.profile.assigned_shops.set(self.cleaned_data["assigned_shops"])
         self.profile.user.is_active = self.cleaned_data["is_active"]
-        if self.profile.role == UserProfile.ADMIN:
-            self.profile.user.username = self.profile.phone_number
-            self.profile.user.is_staff = True
+        self.profile.user.is_staff = self.profile.role == UserProfile.ADMIN
         self.profile.user.save()
         return self.profile
 
