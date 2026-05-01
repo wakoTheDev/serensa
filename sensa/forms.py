@@ -139,14 +139,21 @@ class DailyEntryForm(forms.ModelForm):
         expired_value = cleaned_data.get("expired_value") or Decimal("0.00")
         sales_value = cleaned_data.get("sales_value") or Decimal("0.00")
         debts = cleaned_data.get("debts") or Decimal("0.00")
+        is_room_shop = bool(shop and shop.shop_type == Shop.TYPE_ROOMS)
+
+        if is_room_shop:
+            stock_added = Decimal("0.00")
+            buying_value = Decimal("0.00")
 
         cleaned_data["stock_added"] = stock_added
         cleaned_data["buying_value"] = buying_value
         cleaned_data["expired_value"] = expired_value
         cleaned_data["debts"] = debts
 
-        buying_required = stock_added > Decimal("0.00") or (
+        buying_required = not is_room_shop and (
+            stock_added > Decimal("0.00") or (
             self.require_opening_stock and opening_stock > Decimal("0.00")
+            )
         )
         if buying_required and buying_value <= Decimal("0.00"):
             self.add_error(

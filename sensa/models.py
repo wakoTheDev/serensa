@@ -18,11 +18,13 @@ class Shop(models.Model):
     TYPE_RESTAURANT = "restaurant"
     TYPE_RETAIL = "retail"
     TYPE_BAR = "bar"
+    TYPE_ROOMS = "rooms"
     TYPE_OTHER = "other"
     TYPE_CHOICES = [
         (TYPE_RESTAURANT, "Restaurant"),
         (TYPE_RETAIL, "Retail"),
         (TYPE_BAR, "Bar"),
+        (TYPE_ROOMS, "Rooms"),
         (TYPE_OTHER, "Other"),
     ]
 

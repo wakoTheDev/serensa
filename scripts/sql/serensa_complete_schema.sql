@@ -176,7 +176,7 @@ CREATE TABLE IF NOT EXISTS sensa_shop (
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_sensa_shop_type
-        CHECK (shop_type IN ('restaurant', 'retail', 'bar', 'other')),
+        CHECK (shop_type IN ('restaurant', 'retail', 'bar', 'rooms', 'other')),
     CONSTRAINT fk_sensa_shop_parent_shop
         FOREIGN KEY (parent_shop_id)
         REFERENCES sensa_shop (id)
